@@ -12,6 +12,8 @@ use Funnypot\Policy\Port\Clock;
 use Funnypot\Policy\Port\StateStoreInterface;
 use Funnypot\Policy\ReputationVerdict;
 use Funnypot\Policy\RuleState;
+use Honeypot\WP\State\FileBackend;
+use Honeypot\WP\State\ObjectCacheBackend;
 use Honeypot\WP\State\StateBackend;
 
 /**
@@ -32,6 +34,36 @@ final class WpStateStore implements StateStoreInterface
     {
         $this->backend = $backend;
         $this->clock = $clock;
+    }
+
+    /**
+     * Build the store with the RS-10 backend the settings select. Default (object-cache) never writes
+     * into the plugin dir; the file backend is opt-in for hosts without a persistent object cache.
+     *
+     * @param Settings    $s
+     * @param Clock       $clock
+     * @param string|null $fileDir the plugin-owned state dir for the file backend
+     * @return self
+     */
+    public static function forSettings(Settings $s, Clock $clock, $fileDir = null)
+    {
+        if ($s->localStateBackend() === Settings::BACKEND_FILE) {
+            $dir = $fileDir !== null ? $fileDir : sys_get_temp_dir() . '/honeypot-wp-state';
+            $clockFn = static function () use ($clock) {
+                return $clock->now();
+            };
+            $backend = new FileBackend($dir, $clockFn);
+        } else {
+            $backend = new ObjectCacheBackend();
+        }
+
+        return new self($backend, $clock);
+    }
+
+    /** The active backend (so the mirror/warmer can share it). */
+    public function backend()
+    {
+        return $this->backend;
     }
 
     // --- deception-consistency pins + local blocklist -------------------------------------------
