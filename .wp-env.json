@@ -1,0 +1,9 @@
+{
+  "//": "Deferred integration harness (Phase 9). Requires Docker + @wordpress/env. Not run in this build environment.",
+  "core": "WordPress/WordPress#6.5",
+  "phpVersion": "7.4",
+  "plugins": ["."],
+  "config": {
+    "WP_DEBUG": true
+  }
+}
