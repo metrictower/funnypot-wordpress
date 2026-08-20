@@ -26,9 +26,9 @@ once in `funnypot-policy`. The deception content is core's (`metrictower/funnypo
 **Inert by default.** A fresh install decides nothing until an operator enables a posture. Reputation
 checking and reporting are each off, and both require a `MAINNET_KEY`.
 
-The plugin code is **PHP 7.3-clean** (old WP hosts run old PHP). The bundled `funnypot-core` still
-requires PHP 8.0 today; re-flooring it to 7.3 (plus the two-phase `classify()`/`synthesize()` split) is
-the **hard prerequisite C** — see "Deferred / prerequisites" below.
+The plugin code is **PHP 7.3-clean** (old WP hosts run old PHP), and the bundled `funnypot-core` is now
+PHP **7.3+** too — the 7.3 re-floor and the two-phase `classify()`/`synthesize()` split shipped in core
+`v0.0.1`.
 
 ## Install
 
@@ -132,18 +132,23 @@ The suite includes an end-to-end "wired ports" test (a scanner-probe / sacrifici
 a `deceive`/`block` Decision through the real `PolicyEngine` + D's real adapters), the SF-4
 shim-takedown proof, and a real-`Funnypot\Honeypot` integration smoke test.
 
-### Deferred: wp-env integration
+### Live: wp-env integration suite
 
-Full integration against a **real WordPress** (theme render, byte-identical plugin-off surfaces,
-golden-emit parity vs the standalone app, reporter/reputation wire tests) needs a running WP and is
-**deferred** — it is not available in this build environment. It runs via `@wordpress/env`:
+Integration against a **real WordPress** — booted by `@wordpress/env` in Docker — is live. The suite
+issues real HTTP requests to the booted site and asserts the plugin's actual request-time behavior:
+a scanner probe for `/.env` is **deceived** (the 404 is upgraded into a fake-vulnerable `200` serving
+a synthetic `.env`), a benign unknown path **passes through** as WordPress' own 404, and the homepage
+is served untouched. Needs Docker. It **skips cleanly** when the base URL is unreachable, so it is
+safe in a CI stage without Docker.
 
 ```
-npm ci && npx wp-env start && composer test:integration
+npm install && npx wp-env start && bash bin/wp-env-provision.sh
+vendor/bin/phpunit --testsuite integration   # or: npm run test:integration
+npx wp-env stop
 ```
 
-`tests/Integration/` currently carries a documented skipped placeholder; the assertion list is
-enumerated in `docs/2026-08-19-honeypot-wordpress-plan.md` (Phase 9).
+Full run instructions, the observed-behavior table, and the environment notes (PHP 8.2 container,
+sibling-package mappings, the pinned wp-env version) are in [`docs/INTEGRATION.md`](docs/INTEGRATION.md).
 
 ## Build
 
@@ -153,10 +158,12 @@ bash bin/build.sh    # composer install --no-dev (bundle policy/core/mainnet-cli
 
 ## Deferred / prerequisites
 
-- **C — funnypot-core to PHP 7.3 + the two-phase split** (hard prerequisite). The bundled core is
-  PHP 8 today; the plugin's own glue is already 7.3-clean and CI-lint-gated so nothing regresses when
-  C lands. Do **not** ship the zip on a 7.x host until C is merged.
-- Real-WordPress (wp-env) integration + golden-emit parity (Phase 9).
+- ~~**C — funnypot-core to PHP 7.3 + the two-phase split**~~ **DONE** (core `v0.0.1`): the bundled core
+  is now PHP 7.3+, so the zip is shippable on 7.x hosts. The plugin's own glue was already 7.3-clean and
+  CI-lint-gated.
+- Golden-emit parity vs the standalone app (byte-identical fake surfaces) + reporter/reputation wire
+  tests. The live wp-env suite (`docs/INTEGRATION.md`) already covers the core deceive / passthrough
+  behavior over real HTTP; these deeper parity checks are the remaining follow-up.
 - A production local **GeoIP DB reader** — the `WpGeoIp` port + refresh cron are built; wiring a
   concrete DB-IP Lite MMDB reader is a data-distribution follow-up (the port fail-opens to `null`
   until then).

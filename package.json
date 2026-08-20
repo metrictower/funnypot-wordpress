@@ -1,0 +1,17 @@
+{
+  "name": "funnypot-wordpress",
+  "private": true,
+  "description": "Dev harness for the Honeypot for WordPress plugin: boots a real WordPress via @wordpress/env so the PHPUnit integration suite can exercise the plugin's request-time behavior end to end over HTTP.",
+  "//": "@wordpress/env pinned to 10.38.0: 10.39.0 adds an @wp-playground/cli dep that pulls a native @php-wasm/node (fs-ext) module which fails to compile on Node >=26. Only the Docker path is used here, which needs none of it.",
+  "scripts": {
+    "wp-env": "wp-env",
+    "start": "wp-env start",
+    "stop": "wp-env stop",
+    "clean": "wp-env clean all",
+    "provision": "bash bin/wp-env-provision.sh",
+    "test:integration": "wp-env start && bash bin/wp-env-provision.sh && vendor/bin/phpunit --testsuite integration"
+  },
+  "devDependencies": {
+    "@wordpress/env": "10.38.0"
+  }
+}

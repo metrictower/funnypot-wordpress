@@ -1,9 +1,15 @@
 {
-  "//": "Deferred integration harness (Phase 9). Requires Docker + @wordpress/env. Not run in this build environment.",
   "core": "WordPress/WordPress#6.5",
-  "phpVersion": "7.4",
+  "phpVersion": "8.2",
   "plugins": ["."],
+  "mappings": {
+    "wp-content/plugins/funnypot-core": "../funnypot-core",
+    "wp-content/plugins/funnypot-policy": "../funnypot-policy",
+    "wp-content/plugins/funnypot-mainnet-client": "../funnypot-mainnet-client"
+  },
   "config": {
-    "WP_DEBUG": true
+    "WP_DEBUG": true,
+    "WP_MEMORY_LIMIT": "512M",
+    "WP_MAX_MEMORY_LIMIT": "512M"
   }
 }
