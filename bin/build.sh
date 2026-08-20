@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build a self-contained plugin zip: composer install --no-dev with policy + core + mainnet-client
+# Build a self-contained plugin zip: composer install --no-dev with policy + core + funnypot-mainnet-client
 # resolved from the path repos (or published VCS repos), then zip the plugin with vendor/ bundled.
 # funnypot-core must stay resolvable anonymously (a public repo) for a token-free build.
 set -euo pipefail
@@ -28,7 +28,7 @@ cp -R \
 cp -RL "$ROOT/vendor" "$STAGE/vendor"
 
 echo "==> sanity: bundled dependency packages present"
-for pkg in funnypot-policy funnypot-core mainnet-client; do
+for pkg in funnypot-policy funnypot-core funnypot-mainnet-client; do
   if [ ! -d "$STAGE/vendor/metrictower/$pkg" ]; then
     echo "ERROR: vendor/metrictower/$pkg missing from the bundle" >&2
     exit 1

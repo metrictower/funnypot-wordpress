@@ -1,5 +1,5 @@
 {
-    "name": "metrictower/honeypot-wordpress",
+    "name": "metrictower/funnypot-wordpress",
     "description": "Thin WordPress adapter over the funnypot-policy decision engine (piece D). Normalizes the WP request, asks the shared policy engine for a Decision, and executes it. All decision logic lives in funnypot-policy.",
     "type": "wordpress-plugin",
     "license": "proprietary",
@@ -7,7 +7,7 @@
         "php": ">=7.3",
         "metrictower/funnypot-policy": "*",
         "metrictower/funnypot-core": "*",
-        "metrictower/mainnet-client": "*"
+        "metrictower/funnypot-mainnet-client": "*"
     },
     "require-dev": {
         "phpunit/phpunit": "^9.5",
@@ -19,7 +19,7 @@
     "repositories": [
         { "type": "path", "url": "../funnypot-policy" },
         { "type": "path", "url": "../funnypot-core" },
-        { "type": "path", "url": "../mainnet-client" }
+        { "type": "path", "url": "../funnypot-mainnet-client" }
     ],
     "autoload": {
         "psr-4": {
