@@ -1,5 +1,13 @@
 # Honeypot for WordPress (piece D)
 
+> **Not sure you're in the right place?**
+> - Want a ready-to-run **honeypot box** to deploy → [funnypot](https://github.com/metrictower/funnypot)
+> - Protecting a **Laravel** app → [funnypot-laravel](https://github.com/metrictower/funnypot-laravel)
+> - Protecting a **WordPress** site → funnypot-wordpress **← you are here**
+> - Embedding the deception/detection **engine** in your own PHP / PSR-15 app → [funnypot-core](https://github.com/metrictower/funnypot-core)
+> - Querying / reporting to the **IP-reputation service** from code (the SDK) → [funnypot-mainnet-client](https://github.com/metrictower/funnypot-mainnet-client)
+> - Building on the low-level **decision/policy engine** → [funnypot-policy](https://github.com/metrictower/funnypot-policy)
+
 A **thin WordPress adapter** over the [`metrictower/funnypot-policy`](../funnypot-policy) decision
 engine. The plugin does **not** decide whether a request is an attack, whether to deceive, block, or
 report — that is the shared policy engine's job. D only:
