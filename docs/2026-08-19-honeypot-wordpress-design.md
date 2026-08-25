@@ -8,7 +8,7 @@ D is a **thin WordPress adapter** over it: request normalization, `Decision` exe
 `StateStoreInterface`, hook placement, and the admin UI that produces the policy config array.
 **Consumes (transitive, via funnypot-policy):** `metrictower/funnypot-core` (the two-phase
 `classify()`+`synthesize()` deception engine — M2, held behind the policy's `EvaluatorInterface`) ·
-`metrictower/mainnet-client` (the mainnet client library — F's `ReputationGate`/`Client::check` behind
+`metrictower/funnypot-mainnet-client` (the mainnet client library — F's `ReputationGate`/`Client::check` behind
 the policy's `ReputationInterface`, plus the relocated `Funnypot\Mainnet\Reporter` (née piece B)). The
 optional reporter is provided by F; the reputation-block feature is now a **policy action/config**, not
 bespoke D logic (decision M).
@@ -564,7 +564,7 @@ final class WpReporterBridge        // thin WP-Cron/$wpdb adapter over the mainn
 }
 ```
 
-The reporter is `Funnypot\Mainnet\Reporter` in **`metrictower/mainnet-client`** (decision F, née piece
+The reporter is `Funnypot\Mainnet\Reporter` in **`metrictower/funnypot-mainnet-client`** (decision F, née piece
 B; transitive via core). `WpReporterBridge` is named so it does **not** shadow `Funnypot\Mainnet\Reporter`;
 it composes that reporter (or a self-contained fallback port) over a `WpdbReportQueue`. Its `enqueue`
 signature is byte-for-byte the reporter's `enqueue(string $ip, string $comment, string $categories =
@@ -805,7 +805,7 @@ asset refreshed **in place** (unlike the never-written vendor bundle, §5), expo
 - **`{$prefix}honeypot_wp_report_queue`** + a small dedup/daily-count sidecar, mirroring the app's
   `abuse_queue` / `abuse_reports` / `abuse_daily` shape.
 - **Bundled read-only assets**: `vendor/metrictower/funnypot-policy/` + transitive
-  `vendor/metrictower/funnypot-core/` + `vendor/metrictower/mainnet-client/` (Composer-installed at
+  `vendor/metrictower/funnypot-core/` + `vendor/metrictower/funnypot-mainnet-client/` (Composer-installed at
   build) and core's compiled rules artifacts. Never written at runtime by v1.
 
 ## 6. Security & invariants touched
@@ -980,13 +980,13 @@ asset refreshed **in place** (unlike the never-written vendor bundle, §5), expo
   `EvaluatorInterface`; D consumes it only through that seam plus `Funnypot\Http\ResponseEmitter::emit()`
   (to emit the `fakeHandle`). D no longer calls `Funnypot\Honeypot::respond()`/`detect()` or builds a
   respond-mode `Config` with gate/probeSignature closures — the WHEN/WHETHER now lives in the policy.
-- **`metrictower/mainnet-client` (transitive, via core/policy; decision F).** The standalone mainnet
+- **`metrictower/funnypot-mainnet-client` (transitive, via core/policy; decision F).** The standalone mainnet
   client (PHP >=7.3, namespace `Funnypot\Mainnet\`, no framework). D consumes it two ways, both behind
   the policy: F's `ReputationGate`/`Client::check` is read through the policy's `ReputationInterface`
   (cache-first, backed by D's `WpCache`, §4.8); F's relocated reporter `Funnypot\Mainnet\Reporter`
   (née piece B) is composed by `WpReporterBridge` for the optional reporting path (§4.9). Inert unless
   enabled+keyed, so it adds nothing to a default install's request path.
-- **Reporter (via F — OPTIONAL).** `Funnypot\Mainnet\Reporter` in `metrictower/mainnet-client`, pulled
+- **Reporter (via F — OPTIONAL).** `Funnypot\Mainnet\Reporter` in `metrictower/funnypot-mainnet-client`, pulled
   in transitively — no `Funnypot\Report\*` tree, no "if B landed" fork (F's reporter is always present).
   `WpReporterBridge` (named to avoid shadowing it) composes it over a `WpdbReportQueue implements
   \Funnypot\Mainnet\Report\ReportQueue`, reusing the enqueue/drain contract of
@@ -1043,7 +1043,7 @@ asset refreshed **in place** (unlike the never-written vendor bundle, §5), expo
   promotion + 7.4 typed properties / arrow functions / `??=`**; removed the overstated "named args" and
   "union-type reads" (C found 0 of each).
 - **F — mainnet-client dependency + reputation check/block.** Per decision F, D now depends on
-  `metrictower/mainnet-client` **transitively via core** (core `require`s and re-exports it), added to
+  `metrictower/funnypot-mainnet-client` **transitively via core** (core `require`s and re-exports it), added to
   the header and §9. Added **§4.8 "Reputation check + reputation-block"**: an off-by-default,
   key-gated, **fail-open** IP-reputation first-gate over F's `Funnypot\Mainnet\ReputationGate` — the
   interceptor consults `decide(REMOTE_ADDR)` (D7 source IP) ahead of the deception path and rejects a
@@ -1073,7 +1073,7 @@ asset refreshed **in place** (unlike the never-written vendor bundle, §5), expo
   default stays `24` for the WP host (§16 note: E/F default 12; the WP default is deliberately higher).
 - **Re-review #6 — reporter rebind (mainnet-client, not core).** The WP reporter/engine wiring must
   bind the **relocated** `Funnypot\Mainnet\Reporter` and `Funnypot\Mainnet\Report\ReportQueue` (in
-  `metrictower/mainnet-client`, transitive via core), **not** any `Funnypot\Report\*` tree in core (which
+  `metrictower/funnypot-mainnet-client`, transitive via core), **not** any `Funnypot\Report\*` tree in core (which
   F removed). §4.9 / §9 (post-M renumber) bind `Funnypot\Mainnet\*`; the residual `Funnypot\Report\*` references in
   this doc are historical (they explain what F relocated *out* of core), and the plan's Phase 6 fork
   ("if B landed, core ships `Funnypot\Report\*`") is dropped — F's reporter is always present

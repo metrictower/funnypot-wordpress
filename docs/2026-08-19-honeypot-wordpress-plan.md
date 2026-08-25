@@ -6,7 +6,7 @@
 engine; D is a thin adapter over it). **Hard prerequisite:** **C** (funnypot-core re-floored to PHP 7.3
 **and** split into the M2 two-phase `classify()`+`synthesize()` engine behind the policy's
 `EvaluatorInterface`). **Reporter:** provided by **F** (`Funnypot\Mainnet\Reporter` in
-`metrictower/mainnet-client`, transitive) — no separate `Funnypot\Report\*` prerequisite.
+`metrictower/funnypot-mainnet-client`, transitive) — no separate `Funnypot\Report\*` prerequisite.
 
 This is a disciplined, test-driven build plan. Each phase is a small, independently verifiable
 increment: the change, the test written **first**, the exact command to run it green, and
@@ -53,7 +53,7 @@ What the plugin consumes exists (or is being built in parallel) in the sibling r
     a middle positional arg silently misassigns later ones.
   - `Funnypot\Http\ResponseEmitter::emit(...): void` — the one output side effect D uses, to emit the
     `Decision.fakeHandle` (`http_response_code` + `header` + `echo`, header-splitting defence).
-- **The reporter contract (piece F, relocated from B)**: `metrictower/mainnet-client` ships
+- **The reporter contract (piece F, relocated from B)**: `metrictower/funnypot-mainnet-client` ships
   `Funnypot\Mainnet\Reporter` + `Funnypot\Mainnet\Report\ReportQueue` + `ReportTransport`, PHP-7.3-clean,
   storage-agnostic — transitive via core/policy. D binds a `WpdbReportQueue implements
   \Funnypot\Mainnet\Report\ReportQueue` and a `WpReporterBridge` (named to avoid shadowing
@@ -428,7 +428,7 @@ transport guards (design §4.9). The bridge is **driven by the policy's `Decisio
 4-layer suppression is the policy's (§9), so the bridge only enqueues/drains what the policy already
 vetted; the transport guards are a belt-and-suspenders backstop. The bridge class is
 **`WpReporterBridge`** (M8) — **not** `MainnetReporter`, so it does not shadow the relocated
-`Funnypot\Mainnet\Reporter` (in `metrictower/mainnet-client`, née piece B, transitive — no
+`Funnypot\Mainnet\Reporter` (in `metrictower/funnypot-mainnet-client`, née piece B, transitive — no
 `Funnypot\Report\*` tree, no "if B landed" fork; re-review #6). D binds:
 - `src/Report/WpdbReportQueue.php implements \Funnypot\Mainnet\Report\ReportQueue` (push/take/delete/
   dedup/daily against `{$prefix}honeypot_wp_report_queue` + sidecar, `$wpdb->prepare`d), and a thin
@@ -438,7 +438,7 @@ vetted; the transport guards are a belt-and-suspenders backstop. The bridge clas
   WP-Cron/`$wpdb` adapter.
 - **`enqueueIntent(\Funnypot\Policy\ReportIntent $r): void`** — maps the policy's intent onto
   `enqueue(ip, comment, categories)`. This is the entry `DecisionExecutor` (Phase 5) calls.
-- **Local-availability fallback (packaging only, not a B/core fork):** if `metrictower/mainnet-client`
+- **Local-availability fallback (packaging only, not a B/core fork):** if `metrictower/funnypot-mainnet-client`
   is not yet resolvable in the dev/build checkout, `WpReporterBridge` may carry a **self-contained port**
   of the enqueue/drain + guards with the **identical public shape** (`Funnypot\Mainnet\*` interfaces), so
   it collapses onto the composed reporter with no caller change once the package resolves.
@@ -820,7 +820,7 @@ matrix is green, and phpcs passes on glue code.
    package's public API shifts, D's adapter seams (the five ports, `Decision`/`RequestEvidence`/
    `SiteProfile` shapes, `PolicyConfig::fromArray`) shift with it — track against the policy spec as the
    source of truth for the contract.
-2. **`metrictower/mainnet-client` may not be resolvable in a local checkout** when Phase 6 runs. This
+2. **`metrictower/funnypot-mainnet-client` may not be resolvable in a local checkout** when Phase 6 runs. This
    is now a **packaging/vendoring** question, not a B/core fork: decision F puts the reporter
    (`Funnypot\Mainnet\Reporter`) in the client package, transitive via core, so it is *always* the
    binding target — there is no "reporter in core" branch to gate on. The bridge composes
@@ -957,7 +957,7 @@ matrix is green, and phpcs passes on glue code.
   gates green (design §6.1). D also asks C to expose a **7.3-callable `Config` array/builder factory**
   (M15) — preferred over the positional fallback in Phase 4, not a hard prerequisite.
 - **B · report-to-mainnet — PROVIDED BY F, not a separate dependency.** F relocated the reporter into
-  `metrictower/mainnet-client` as `Funnypot\Mainnet\Reporter` (+ `Report\ReportQueue`/`ReportTransport`),
+  `metrictower/funnypot-mainnet-client` as `Funnypot\Mainnet\Reporter` (+ `Report\ReportQueue`/`ReportTransport`),
   transitive — no `Funnypot\Report\*` tree, no "if B landed" fork. Phase 6 binds a `WpdbReportQueue` + a
   `WpReporterBridge` (M8) composing that reporter, driven by the policy's `Decision.report`, with a
   self-contained port as a local-availability fallback. Reporting off by default ⇒ no hard dependency.
@@ -969,7 +969,7 @@ matrix is green, and phpcs passes on glue code.
   `format=json`, ETag/304) as the fleet-scale fresh-read (Phase 6c). **O2:** D/E hold a mainnet
   **`sensor`-tier key** (report **+** escalation-check rights, metered per-install) — A1 must expose that
   tier; this supersedes the earlier "D/E hold a read-only `service` key" reading.
-- **`metrictower/mainnet-client` (F) — TRANSITIVE (via core/policy).** Provides F's `ReputationGate`/
+- **`metrictower/funnypot-mainnet-client` (F) — TRANSITIVE (via core/policy).** Provides F's `ReputationGate`/
   `Client::check`/`cachedVerdict` (consumed behind the policy's `ReputationInterface`, mirror-first then
   cache via D's `WpCache`/O1 mirror, Phase 6b/6c) + the reporter + the decision-N breaker marker the
   drain/warmer share. Pulled in through the bundled `vendor/`, no direct composer entry. Reputation is
@@ -1010,7 +1010,7 @@ matrix is green, and phpcs passes on glue code.
   promotion + 7.4 typed props / arrow-fns / `??=`**; removed the overstated named-args and union-types
   claims (C found 0 of each).
 - **F — mainnet-client dependency + reputation check/block phases.** Added the transitive
-  `metrictower/mainnet-client` dependency (via core) to Orientation and the end Dependencies, with its
+  `metrictower/funnypot-mainnet-client` dependency (via core) to Orientation and the end Dependencies, with its
   `ReputationGate`/`Cache` contract. Extended **Phase 1 `Settings`** with the reputation keys
   (`check_enabled` default off, `block_threshold=75`, `cache_ttl_hours=24`, `fail_mode=open`) and a
   `checkActive()` helper (key-gated, independent of reporting), plus tests. *(The `block_threshold=75`
@@ -1044,7 +1044,7 @@ matrix is green, and phpcs passes on glue code.
   host by design (F/E default 12; deliberate divergence).
 - **Re-review #6 — reporter rebind (mainnet-client, not core).** Rewrote **Phase 6** to bind
   `WpdbReportQueue implements \Funnypot\Mainnet\Report\ReportQueue` and compose `Funnypot\Mainnet\Reporter`
-  (in `metrictower/mainnet-client`, transitive via core), dropping the "if B has landed / core ships
+  (in `metrictower/funnypot-mainnet-client`, transitive via core), dropping the "if B has landed / core ships
   `Funnypot\Report\*`" fork — F's reporter is always present transitively. The only remaining variance is
   a **packaging** fallback (self-contained port behind the identical `Funnypot\Mainnet\*` interfaces if the
   package is not yet resolvable locally), not a B/core fork. Updated Risk 2, Key-decision 4, and the
