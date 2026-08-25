@@ -5,8 +5,8 @@
     "license": "proprietary",
     "require": {
         "php": ">=7.3",
-        "metrictower/funnypot-policy": "^0.1",
-        "metrictower/funnypot-core": "^0.4",
+        "metrictower/funnypot-policy": "^0.2",
+        "metrictower/funnypot-core": "^0.5",
         "metrictower/funnypot-mainnet-client": "^0.1"
     },
     "require-dev": {

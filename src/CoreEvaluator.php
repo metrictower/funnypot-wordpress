@@ -11,6 +11,7 @@ use Funnypot\Policy\Port\EvaluatorInterface;
 use Funnypot\Policy\RequestEvidence;
 use Funnypot\Policy\SiteProfile as PolicySiteProfile;
 use Funnypot\Policy\Verdict as PolicyVerdict;
+use Funnypot\Core\FakeHandle as CoreFakeHandle;
 use Funnypot\Core\RequestContext as CoreRequestContext;
 use Funnypot\Core\SiteProfile as CoreSiteProfile;
 use Funnypot\Core\Verdict as CoreVerdict;
@@ -20,7 +21,8 @@ use Funnypot\Core\Verdict as CoreVerdict;
  * policy's EvaluatorInterface, converting policy value objects to/from core's native types (design
  * §4.7). D authors NO decision logic here — it only translates.
  *
- * synthesize() re-runs core's PURE classify() on the current request to recover the FakeHandle the
+ * synthesize() takes the FakeHandle off the policy Verdict's opaque engineHandle, falling back to a
+ * re-classify only for the policy's own invented verdicts (which never carried one). It used to
  * render needs (the policy Verdict does not carry one), then calls core synthesize(); core returning
  * null degrades to a plain 404 FakeResponse — the "only ever upgrade a 404" invariant. 7.3-clean
  * (no named args; core is PHP8 today and re-floors to 7.3 under C).
@@ -51,21 +53,27 @@ final class CoreEvaluator implements EvaluatorInterface
     {
         $coreProfile = self::toCoreProfile($profile);
 
-        // Recover the render handle: re-run core's pure classify on the held request. Deterministic,
-        // no I/O; this is exactly how core's own legacy respond() derived the handle before deceiving.
-        $coreVerdict = null;
-        if ($this->ctx !== null) {
+        // Fast path: the handle rode across on the Verdict itself, so there is nothing to recompute.
+        $handle = self::decodeHandle($verdict->engineHandle());
+
+        // Fallback, and it is NOT dead code. The policy invents its own Verdicts for the sacrificial
+        // / pin / country-replay paths — those never came from classify(), so they carry no handle,
+        // and this is the only way they can still be deceived rather than degrading to a plain 404.
+        // Re-running classify() is pure and deterministic; it just re-matches the whole template
+        // index, which is why it is the fallback and no longer the default.
+        if ($handle === null && $this->ctx !== null) {
             try {
-                $coreVerdict = $this->core->classify($this->ctx, $coreProfile);
+                $reclassified = $this->core->classify($this->ctx, $coreProfile);
+                $handle = $reclassified->fakeHandle;
             } catch (\Throwable $e) {
-                $coreVerdict = null;
+                $handle = null;
             }
         }
 
         $rendered = null;
-        if ($coreVerdict !== null) {
+        if ($handle !== null) {
             try {
-                $rendered = $this->core->synthesize($coreVerdict, $coreProfile, $seed);
+                $rendered = $this->core->synthesizeFromHandle($handle, $coreProfile, $seed);
             } catch (\Throwable $e) {
                 $rendered = null;
             }
@@ -109,6 +117,23 @@ final class CoreEvaluator implements EvaluatorInterface
 
     // --- core -> policy --------------------------------------------------------------------------
 
+    /** Flatten core's opaque FakeHandle so the policy Verdict can carry it as bytes. */
+    private static function encodeHandle($handle)
+    {
+        return $handle === null ? '' : (string) json_encode($handle->toArray());
+    }
+
+    /** Rebuild it on the far side. Anything malformed degrades to null, never an exception. */
+    private static function decodeHandle($encoded)
+    {
+        if (!is_string($encoded) || $encoded === '') {
+            return null;
+        }
+        $data = json_decode($encoded, true);
+
+        return is_array($data) && isset($data['kind']) ? CoreFakeHandle::fromArray($data) : null;
+    }
+
     private static function toPolicyVerdict(CoreVerdict $v, PolicySiteProfile $profile, $path)
     {
         $classification = $v->classification; // core + policy share the constant strings
@@ -118,7 +143,7 @@ final class CoreEvaluator implements EvaluatorInterface
         $onRealRoute = $profile->routeExists((string) $path);
         $bot = self::toPolicyBotSignals($v->signals);
 
-        return new PolicyVerdict($classification, $matched, $signal, (int) $v->anomaly, $severity, $onRealRoute, $bot);
+        return new PolicyVerdict($classification, $matched, $signal, (int) $v->anomaly, $severity, $onRealRoute, $bot, self::encodeHandle($v->fakeHandle));
     }
 
     private static function toPolicyBotSignals($coreSet)

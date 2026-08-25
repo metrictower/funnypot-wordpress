@@ -42,6 +42,13 @@ final class FakeCoreEvaluator implements Evaluator
 
     public function synthesize(Verdict $verdict, SiteProfile $profile, string $seed): ?SynthesizedResponse
     {
-        return $this->synthResponse;
+        return $verdict->fakeHandle === null ? null : $this->synthResponse;
+    }
+
+    public function synthesizeFromHandle(?FakeHandle $handle, SiteProfile $profile, string $seed): ?SynthesizedResponse
+    {
+        // Mirrors the real engine: the handle alone decides whether there is anything to build, so a
+        // test that loses the handle across the boundary fails here rather than silently passing.
+        return $handle === null ? null : $this->synthResponse;
     }
 }
