@@ -6,7 +6,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD="$ROOT/build"
-STAGE="$BUILD/honeypot-wordpress"
+STAGE="$BUILD/funnypot-wordpress"
 
 echo "==> clean"
 rm -rf "$BUILD"
@@ -18,7 +18,7 @@ composer install --no-dev --optimize-autoloader --no-interaction
 
 echo "==> stage plugin files"
 cp -R \
-  "$ROOT/honeypot-wordpress.php" \
+  "$ROOT/funnypot-wordpress.php" \
   "$ROOT/mu-entry.php" \
   "$ROOT/README.md" \
   "$ROOT/composer.json" \
@@ -40,8 +40,8 @@ fi
 
 echo "==> zip"
 cd "$BUILD"
-zip -qr "honeypot-wordpress.zip" "honeypot-wordpress"
-echo "==> built $BUILD/honeypot-wordpress.zip"
+zip -qr "funnypot-wordpress.zip" "funnypot-wordpress"
+echo "==> built $BUILD/funnypot-wordpress.zip"
 
 echo "==> restore dev dependencies"
 cd "$ROOT"

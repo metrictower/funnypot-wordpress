@@ -35,14 +35,14 @@ PHP **7.3+** too — the 7.3 re-floor and the two-phase `classify()`/`synthesize
 
 ### As a downloadable zip (recommended for WP hosts)
 
-`bin/build.sh` (see *Build*) produces `build/honeypot-wordpress.zip` with
+`bin/build.sh` (see *Build*) produces `build/funnypot-wordpress.zip` with
 `vendor/metrictower/{funnypot-policy,funnypot-core,mainnet-client}/` and core's rules artifacts
 bundled. Upload it under **Plugins → Add New → Upload Plugin**, then activate.
 
 ### As a Composer package
 
 ```
-composer require metrictower/honeypot-wordpress
+composer require metrictower/funnypot-wordpress
 ```
 
 On activation the plugin creates its tables, generates a per-install `sensor_id`, and copies a

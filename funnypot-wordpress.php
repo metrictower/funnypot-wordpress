@@ -1,7 +1,7 @@
 <?php
 /**
- * Plugin Name:       Honeypot for WordPress
- * Plugin URI:        https://github.com/metrictower/honeypot-wordpress
+ * Plugin Name:       funnypot for WordPress
+ * Plugin URI:        https://github.com/metrictower/funnypot-wordpress
  * Description:        Thin WordPress adapter over the funnypot-policy decision engine. Deceives scanners, optionally blocks known-bad actors, and reports abuse — inert by default.
  * Version:           0.1.0-dev
  * Requires PHP:      7.3
@@ -10,7 +10,7 @@
  * License:           Proprietary
  * Text Domain:       honeypot-wp
  *
- * @package Honeypot\WP
+ * @package Funnypot\WordPress
  */
 
 // Never run outside WordPress. Also keeps a direct hit from fataling / disclosing anything.
