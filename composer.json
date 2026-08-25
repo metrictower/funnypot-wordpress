@@ -1,6 +1,6 @@
 {
     "name": "metrictower/funnypot-wordpress",
-    "description": "Thin WordPress adapter over the funnypot-policy decision engine (piece D). Normalizes the WP request, asks the shared policy engine for a Decision, and executes it. All decision logic lives in funnypot-policy.",
+    "description": "WordPress plugin for funnypot: normalise the WP request, ask the funnypot-policy decision engine, execute the Decision (allow / log / block / deceive). Owns no decision logic.",
     "type": "wordpress-plugin",
     "license": "proprietary",
     "require": {

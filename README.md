@@ -1,4 +1,4 @@
-# Honeypot for WordPress (piece D)
+# funnypot-wordpress 🍯
 
 > **Not sure you're in the right place?**
 > - Want a ready-to-run **honeypot box** to deploy → [funnypot-app](https://github.com/metrictower/funnypot-app)
