@@ -59,8 +59,10 @@ final class CoreEvaluator implements EvaluatorInterface
         // Fallback, and it is NOT dead code. The policy invents its own Verdicts for the sacrificial
         // / pin / country-replay paths — those never came from classify(), so they carry no handle,
         // and this is the only way they can still be deceived rather than degrading to a plain 404.
-        // Re-running classify() is pure and deterministic; it just re-matches the whole template
-        // index, which is why it is the fallback and no longer the default.
+        // It is also what keeps this adapter coherent: re-deriving PER PATH means a pinned actor
+        // gets each path's own fake, where a single remembered handle would serve the wrong one.
+        // Cost is not the reason it is second — classify() is ~4 us warm (a few O(1) hash probes,
+        // not a scan of the template index); the handle is simply the more direct answer.
         if ($handle === null && $this->ctx !== null) {
             try {
                 $reclassified = $this->core->classify($this->ctx, $coreProfile);
