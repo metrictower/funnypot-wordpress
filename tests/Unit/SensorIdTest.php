@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Unit;
+namespace Funnypot\WordPress\Tests\Unit;
 
-use Honeypot\WP\SensorId;
+use Funnypot\WordPress\SensorId;
 
 final class SensorIdTest extends TestCase
 {

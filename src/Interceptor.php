@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP;
+namespace Funnypot\WordPress;
 
 /**
  * The two position hooks (design §3, §4.1) driving one PolicyEngine::evaluate() call each. Both entry
@@ -35,7 +35,7 @@ final class Interceptor
     public static $policyFactory;
     /** @var callable(Settings):DecisionExecutor */
     public static $executorProvider;
-    /** @var callable(Settings,\Honeypot\WP\WpClock):WpStateStore */
+    /** @var callable(Settings,\Funnypot\WordPress\WpClock):WpStateStore */
     public static $storeProvider;
     /** @var array{xmlrpc:bool,wp_login:bool} decoy opt-ins for WpSiteProfile */
     public static $decoys = array('xmlrpc' => false, 'wp_login' => false);

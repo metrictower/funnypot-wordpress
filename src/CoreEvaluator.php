@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP;
+namespace Funnypot\WordPress;
 
-use Funnypot\Contracts\Evaluator as CoreEvaluatorContract;
+use Funnypot\Core\Contracts\Evaluator as CoreEvaluatorContract;
 use Funnypot\Policy\BotSignals as PolicyBotSignals;
 use Funnypot\Policy\FakeResponse as PolicyFakeResponse;
 use Funnypot\Policy\Port\EvaluatorInterface;
 use Funnypot\Policy\RequestEvidence;
 use Funnypot\Policy\SiteProfile as PolicySiteProfile;
 use Funnypot\Policy\Verdict as PolicyVerdict;
-use Funnypot\RequestContext as CoreRequestContext;
-use Funnypot\SiteProfile as CoreSiteProfile;
-use Funnypot\Verdict as CoreVerdict;
+use Funnypot\Core\RequestContext as CoreRequestContext;
+use Funnypot\Core\SiteProfile as CoreSiteProfile;
+use Funnypot\Core\Verdict as CoreVerdict;
 
 /**
- * Bridges core's two-phase engine (Funnypot\Contracts\Evaluator: classify()+synthesize()) to the
+ * Bridges core's two-phase engine (Funnypot\Core\Contracts\Evaluator: classify()+synthesize()) to the
  * policy's EvaluatorInterface, converting policy value objects to/from core's native types (design
  * §4.7). D authors NO decision logic here — it only translates.
  *

@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Unit;
+namespace Funnypot\WordPress\Tests\Unit;
 
-use Honeypot\WP\RequestFactory;
-use Honeypot\WP\Settings;
+use Funnypot\WordPress\RequestFactory;
+use Funnypot\WordPress\Settings;
 
 final class RequestFactoryTest extends TestCase
 {

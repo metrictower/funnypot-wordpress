@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Unit;
+namespace Funnypot\WordPress\Tests\Unit;
 
-use Honeypot\WP\Admin\SettingsSanitizer;
+use Funnypot\WordPress\Admin\SettingsSanitizer;
 
 final class SettingsSanitizeTest extends TestCase
 {

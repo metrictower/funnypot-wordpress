@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Unit;
+namespace Funnypot\WordPress\Tests\Unit;
 
-use Honeypot\WP\Admin\Notices;
+use Funnypot\WordPress\Admin\Notices;
 
 final class NoticesTest extends TestCase
 {

@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP;
+namespace Funnypot\WordPress;
 
-use Funnypot\Config as CoreConfig;
+use Funnypot\Core\Config as CoreConfig;
 
 /**
  * Maps the STYLE/engine Settings knobs to core's Config, the object core's synthesize() reads

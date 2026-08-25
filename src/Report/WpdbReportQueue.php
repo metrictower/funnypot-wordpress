@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Report;
+namespace Funnypot\WordPress\Report;
 
 use Funnypot\Mainnet\Report\ReportQueue;
 

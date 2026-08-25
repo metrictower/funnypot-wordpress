@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Report;
+namespace Funnypot\WordPress\Report;
 
 use Funnypot\Mainnet\Cache\Cache;
 use Funnypot\Mainnet\CircuitBreaker;
@@ -10,7 +10,7 @@ use Funnypot\Mainnet\Report\Reporter;
 use Funnypot\Mainnet\Report\ReportQueue;
 use Funnypot\Mainnet\Transport\Transport;
 use Funnypot\Policy\ReportIntent;
-use Honeypot\WP\Settings;
+use Funnypot\WordPress\Settings;
 
 /**
  * The WP adapter over the relocated mainnet-client reporter (design §4.9, M8). Named so it does NOT

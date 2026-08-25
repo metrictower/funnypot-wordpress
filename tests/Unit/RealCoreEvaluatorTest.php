@@ -2,22 +2,22 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Unit;
+namespace Funnypot\WordPress\Tests\Unit;
 
-use Funnypot\Honeypot;
+use Funnypot\Core\Honeypot;
 use Funnypot\Policy\Decision;
-use Honeypot\WP\CoreEvaluator;
-use Honeypot\WP\EvaluatorConfig;
-use Honeypot\WP\PolicyFactory;
-use Honeypot\WP\RequestFactory;
-use Honeypot\WP\Settings;
-use Honeypot\WP\Tests\Fakes\InMemoryBackend;
-use Honeypot\WP\Tests\Fakes\MutableClock;
-use Honeypot\WP\WpSiteProfile;
-use Honeypot\WP\WpStateStore;
+use Funnypot\WordPress\CoreEvaluator;
+use Funnypot\WordPress\EvaluatorConfig;
+use Funnypot\WordPress\PolicyFactory;
+use Funnypot\WordPress\RequestFactory;
+use Funnypot\WordPress\Settings;
+use Funnypot\WordPress\Tests\Fakes\InMemoryBackend;
+use Funnypot\WordPress\Tests\Fakes\MutableClock;
+use Funnypot\WordPress\WpSiteProfile;
+use Funnypot\WordPress\WpStateStore;
 
 /**
- * Integration-flavoured smoke test wiring the REAL core evaluator (Funnypot\Honeypot over the bundled
+ * Integration-flavoured smoke test wiring the REAL core evaluator (Funnypot\Core\Honeypot over the bundled
  * rules artifact). Proves the CoreEvaluator bridge + PolicyFactory integrate with the real engine end
  * to end. If the bundled artifact cannot load in this environment (a C-prerequisite gap), the test
  * skips rather than fails.

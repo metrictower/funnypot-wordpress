@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP;
+namespace Funnypot\WordPress;
 
-use Funnypot\Honeypot;
+use Funnypot\Core\Honeypot;
 use Funnypot\Mainnet\CircuitBreaker;
 use Funnypot\Mainnet\Client as MainnetClient;
 use Funnypot\Mainnet\Config as MainnetConfig;
@@ -12,12 +12,12 @@ use Funnypot\Policy\Geo\NullGeoIp;
 use Funnypot\Policy\Log\NullLogger;
 use Funnypot\Policy\PolicyConfig;
 use Funnypot\Policy\PolicyEngine;
-use Honeypot\WP\Geo\WpGeoIp;
-use Honeypot\WP\Reputation\MainnetReputation;
-use Honeypot\WP\Reputation\NullReputation;
-use Honeypot\WP\Reputation\Warmer;
-use Honeypot\WP\Reputation\WpCache;
-use Honeypot\WP\Report\WpRemotePostTransport;
+use Funnypot\WordPress\Geo\WpGeoIp;
+use Funnypot\WordPress\Reputation\MainnetReputation;
+use Funnypot\WordPress\Reputation\NullReputation;
+use Funnypot\WordPress\Reputation\Warmer;
+use Funnypot\WordPress\Reputation\WpCache;
+use Funnypot\WordPress\Report\WpRemotePostTransport;
 
 /**
  * The plugin's one wiring point (design §4.3): reads the settings, builds the §8 PolicyConfig, and

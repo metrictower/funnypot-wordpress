@@ -6,7 +6,7 @@
     "require": {
         "php": ">=7.3",
         "metrictower/funnypot-policy": "^0.1",
-        "metrictower/funnypot-core": "^0.2",
+        "metrictower/funnypot-core": "^0.3",
         "metrictower/funnypot-mainnet-client": "^0.1"
     },
     "require-dev": {
@@ -18,12 +18,12 @@
     "prefer-stable": true,
     "autoload": {
         "psr-4": {
-            "Honeypot\\WP\\": "src/"
+            "Funnypot\\WordPress\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Honeypot\\WP\\Tests\\": "tests/"
+            "Funnypot\\WordPress\\Tests\\": "tests/"
         }
     },
     "scripts": {

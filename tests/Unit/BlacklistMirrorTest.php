@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Unit;
+namespace Funnypot\WordPress\Tests\Unit;
 
 use Funnypot\Mainnet\Cache\ArrayCache;
 use Funnypot\Mainnet\CircuitBreaker;
-use Honeypot\WP\Mirror\BlacklistMirror;
-use Honeypot\WP\Settings;
-use Honeypot\WP\Tests\Fakes\InMemoryBackend;
-use Honeypot\WP\Tests\Fakes\MutableClock;
-use Honeypot\WP\Tests\Fakes\RecordingTransport;
-use Honeypot\WP\WpStateStore;
+use Funnypot\WordPress\Mirror\BlacklistMirror;
+use Funnypot\WordPress\Settings;
+use Funnypot\WordPress\Tests\Fakes\InMemoryBackend;
+use Funnypot\WordPress\Tests\Fakes\MutableClock;
+use Funnypot\WordPress\Tests\Fakes\RecordingTransport;
+use Funnypot\WordPress\WpStateStore;
 
 final class BlacklistMirrorTest extends TestCase
 {

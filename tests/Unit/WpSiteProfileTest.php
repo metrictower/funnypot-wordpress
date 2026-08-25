@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Unit;
+namespace Funnypot\WordPress\Tests\Unit;
 
 use Funnypot\Policy\SiteProfile;
-use Honeypot\WP\WpSiteProfile;
+use Funnypot\WordPress\WpSiteProfile;
 
 final class WpSiteProfileTest extends TestCase
 {

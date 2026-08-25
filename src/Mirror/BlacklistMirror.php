@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Mirror;
+namespace Funnypot\WordPress\Mirror;
 
 use Funnypot\Mainnet\CircuitBreaker;
 use Funnypot\Mainnet\Transport\Transport;
-use Honeypot\WP\Settings;
-use Honeypot\WP\WpStateStore;
+use Funnypot\WordPress\Settings;
+use Funnypot\WordPress\WpStateStore;
 
 /**
  * O1 local-mirror-lite: a cron-driven, ETag/304-conditional pull of A1's THIN blacklist artifact

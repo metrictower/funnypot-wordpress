@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Fakes;
+namespace Funnypot\WordPress\Tests\Fakes;
 
-use Honeypot\WP\State\StateBackend;
+use Funnypot\WordPress\State\StateBackend;
 
 /** An in-memory TTL KV StateBackend for tests, honoring expiry against an injected clock callable. */
 final class InMemoryBackend implements StateBackend

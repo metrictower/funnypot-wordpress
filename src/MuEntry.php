@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP;
+namespace Funnypot\WordPress;
 
 /**
  * The stable, versioned entry the mu-loader shim require's + calls (SF-4). Kept deliberately tiny and
@@ -26,7 +26,7 @@ final class MuEntry
         }
         self::$booted = true;
 
-        if (class_exists('Honeypot\\WP\\Plugin') && method_exists('Honeypot\\WP\\Plugin', 'registerBefore')) {
+        if (class_exists('Funnypot\Core\\WordPress\\Plugin') && method_exists('Funnypot\Core\\WordPress\\Plugin', 'registerBefore')) {
             Plugin::registerBefore();
         }
     }

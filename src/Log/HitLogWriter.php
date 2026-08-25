@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Log;
+namespace Funnypot\WordPress\Log;
 
 /**
  * The hit-log seam (design §4.5). DecisionExecutor records one row per log/deceive/block. The row

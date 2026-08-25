@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Integration;
+namespace Funnypot\WordPress\Tests\Integration;
 
 use PHPUnit\Framework\TestCase;
 

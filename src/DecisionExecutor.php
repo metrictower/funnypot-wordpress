@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP;
+namespace Funnypot\WordPress;
 
 use Funnypot\Policy\Decision;
 use Funnypot\Policy\Port\Clock;
 use Funnypot\Policy\RequestEvidence;
-use Honeypot\WP\Http\ResponseEmitter;
-use Honeypot\WP\Log\HitLogWriter;
-use Honeypot\WP\Log\NullHitLogWriter;
-use Honeypot\WP\Report\ReporterBridge;
+use Funnypot\WordPress\Http\ResponseEmitter;
+use Funnypot\WordPress\Log\HitLogWriter;
+use Funnypot\WordPress\Log\NullHitLogWriter;
+use Funnypot\WordPress\Report\ReporterBridge;
 
 /**
  * Turns the policy's pure-data Decision into a WordPress effect (design §4.5) — the one place D does

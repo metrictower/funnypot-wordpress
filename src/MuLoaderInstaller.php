@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP;
+namespace Funnypot\WordPress;
 
 /**
  * Installs the degrade-safe mu-plugin loader shim so the BEFORE position runs at muplugins_loaded —
@@ -51,8 +51,8 @@ final class MuLoaderInstaller
             . "\$honeypot_wp_bootstrap = " . $path . ";\n"
             . "if (!is_file(\$honeypot_wp_bootstrap)) { return; } // plugin removed/renamed -> inert, never fatal\n"
             . "require_once \$honeypot_wp_bootstrap;\n"
-            . "if (class_exists('Honeypot\\\\WP\\\\MuEntry') && method_exists('Honeypot\\\\WP\\\\MuEntry', 'boot')) {\n"
-            . "    try { \\Honeypot\\WP\\MuEntry::boot(); } catch (\\Throwable \$e) { /* a fault must never take the site down */ }\n"
+            . "if (class_exists('Funnypot\\\\WordPress\\\\MuEntry') && method_exists('Funnypot\\\\WordPress\\\\MuEntry', 'boot')) {\n"
+            . "    try { \\Funnypot\Core\\WordPress\\MuEntry::boot(); } catch (\\Throwable \$e) { /* a fault must never take the site down */ }\n"
             . "}\n";
     }
 

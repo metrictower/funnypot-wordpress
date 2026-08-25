@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Unit;
+namespace Funnypot\WordPress\Tests\Unit;
 
-use Honeypot\WP\Cli\HoneypotCommand;
-use Honeypot\WP\Settings;
+use Funnypot\WordPress\Cli\HoneypotCommand;
+use Funnypot\WordPress\Settings;
 
 final class CliStatusTest extends TestCase
 {

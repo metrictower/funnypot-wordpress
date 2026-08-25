@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Unit;
+namespace Funnypot\WordPress\Tests\Unit;
 
 use Funnypot\Mainnet\Cache\ArrayCache;
 use Funnypot\Mainnet\CircuitBreaker;
-use Honeypot\WP\Reputation\Warmer;
-use Honeypot\WP\Tests\Fakes\InMemoryBackend;
-use Honeypot\WP\Tests\Fakes\MutableClock;
+use Funnypot\WordPress\Reputation\Warmer;
+use Funnypot\WordPress\Tests\Fakes\InMemoryBackend;
+use Funnypot\WordPress\Tests\Fakes\MutableClock;
 
 final class WarmerTest extends TestCase
 {

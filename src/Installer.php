@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP;
+namespace Funnypot\WordPress;
 
 /**
  * Activation/deactivation side effects (design §5): the custom tables (dbDelta), the per-install

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Http;
+namespace Funnypot\WordPress\Http;
 
 use Funnypot\Policy\FakeResponse;
 

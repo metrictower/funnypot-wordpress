@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Fakes;
+namespace Funnypot\WordPress\Tests\Fakes;
 
 use Funnypot\Policy\Port\Clock;
 

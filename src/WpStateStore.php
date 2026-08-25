@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP;
+namespace Funnypot\WordPress;
 
 use Funnypot\Policy\ActorFacts;
 use Funnypot\Policy\AggScore;
@@ -12,9 +12,9 @@ use Funnypot\Policy\Port\Clock;
 use Funnypot\Policy\Port\StateStoreInterface;
 use Funnypot\Policy\ReputationVerdict;
 use Funnypot\Policy\RuleState;
-use Honeypot\WP\State\FileBackend;
-use Honeypot\WP\State\ObjectCacheBackend;
-use Honeypot\WP\State\StateBackend;
+use Funnypot\WordPress\State\FileBackend;
+use Funnypot\WordPress\State\ObjectCacheBackend;
+use Funnypot\WordPress\State\StateBackend;
 
 /**
  * The one persistence seam the policy engine reads/writes through (design §4.6). D maps each port

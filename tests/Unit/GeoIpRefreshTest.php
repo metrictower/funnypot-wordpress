@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Unit;
+namespace Funnypot\WordPress\Tests\Unit;
 
-use Honeypot\WP\Geo\GeoIpRefresh;
-use Honeypot\WP\Settings;
-use Honeypot\WP\Tests\Fakes\InMemoryBackend;
-use Honeypot\WP\Tests\Fakes\MutableClock;
-use Honeypot\WP\Tests\Fakes\RecordingTransport;
+use Funnypot\WordPress\Geo\GeoIpRefresh;
+use Funnypot\WordPress\Settings;
+use Funnypot\WordPress\Tests\Fakes\InMemoryBackend;
+use Funnypot\WordPress\Tests\Fakes\MutableClock;
+use Funnypot\WordPress\Tests\Fakes\RecordingTransport;
 
 final class GeoIpRefreshTest extends TestCase
 {

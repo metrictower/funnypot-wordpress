@@ -2,18 +2,18 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP;
+namespace Funnypot\WordPress;
 
-use Honeypot\WP\Admin\Notices;
-use Honeypot\WP\Admin\SettingsScreen;
-use Honeypot\WP\Cli\HoneypotCommand;
-use Honeypot\WP\Geo\GeoIpRefresh;
-use Honeypot\WP\Log\WpdbHitLogWriter;
-use Honeypot\WP\Mirror\BlacklistMirror;
-use Honeypot\WP\Report\WpdbReportQueue;
-use Honeypot\WP\Report\WpRemotePostTransport;
-use Honeypot\WP\Report\WpReporterBridge;
-use Honeypot\WP\Reputation\WpCache;
+use Funnypot\WordPress\Admin\Notices;
+use Funnypot\WordPress\Admin\SettingsScreen;
+use Funnypot\WordPress\Cli\HoneypotCommand;
+use Funnypot\WordPress\Geo\GeoIpRefresh;
+use Funnypot\WordPress\Log\WpdbHitLogWriter;
+use Funnypot\WordPress\Mirror\BlacklistMirror;
+use Funnypot\WordPress\Report\WpdbReportQueue;
+use Funnypot\WordPress\Report\WpRemotePostTransport;
+use Funnypot\WordPress\Report\WpReporterBridge;
+use Funnypot\WordPress\Reputation\WpCache;
 
 /**
  * The WordPress bootstrap (design §4.1) — the one place the adapter meets WordPress. Wires the

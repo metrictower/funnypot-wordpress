@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Unit;
+namespace Funnypot\WordPress\Tests\Unit;
 
 use Brain\Monkey;
 use PHPUnit\Framework\TestCase as BaseTestCase;

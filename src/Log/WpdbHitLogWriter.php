@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Log;
+namespace Funnypot\WordPress\Log;
 
 /**
  * The real hit-log writer over $wpdb (design §4.5). Thin: one prepared INSERT into

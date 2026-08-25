@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP;
+namespace Funnypot\WordPress;
 
 use Funnypot\Policy\PolicyConfig;
 use Funnypot\Policy\ReputationVerdict;

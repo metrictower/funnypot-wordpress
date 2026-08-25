@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Unit;
+namespace Funnypot\WordPress\Tests\Unit;
 
-use Funnypot\Config as CoreConfig;
-use Honeypot\WP\EvaluatorConfig;
-use Honeypot\WP\Settings;
+use Funnypot\Core\Config as CoreConfig;
+use Funnypot\WordPress\EvaluatorConfig;
+use Funnypot\WordPress\Settings;
 
 /**
  * Phase 4 — the STYLE/engine Settings -> core Config mapping, tested against the REAL core Config.

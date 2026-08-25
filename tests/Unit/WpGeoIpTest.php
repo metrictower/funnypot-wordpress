@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Unit;
+namespace Funnypot\WordPress\Tests\Unit;
 
-use Honeypot\WP\Geo\WpGeoIp;
+use Funnypot\WordPress\Geo\WpGeoIp;
 
 final class WpGeoIpTest extends TestCase
 {

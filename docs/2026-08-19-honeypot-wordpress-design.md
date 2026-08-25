@@ -163,7 +163,7 @@ ordinary WP traffic falling straight through as `allow`.
 
 ## 4. The concrete surface
 
-Namespace `Honeypot\WP\` (PSR-4, `src/`). Text domain `honeypot-wp`. Option key
+Namespace `Funnypot\WordPress\` (PSR-4, `src/`). Text domain `honeypot-wp`. Option key
 `honeypot_wp_settings`.
 
 ### 4.1 Bootstrap + hook wiring (two positions)
@@ -173,9 +173,9 @@ position hooks** per the config (§8) — a BEFORE-position middleware and a FAL
 
 ```php
 // registers activation/deactivation, admin menu, WP-CLI, and the two position hooks.
-add_action('muplugins_loaded', ['Honeypot\WP\Interceptor', 'runBefore'], 0);    // BEFORE (mu-plugin)
-add_action('plugins_loaded',   ['Honeypot\WP\Interceptor', 'runBefore'], 0);    // BEFORE (ordinary-plugin fallback)
-add_action('template_redirect',['Honeypot\WP\Interceptor', 'runFallback'], 0);  // FALLBACK (fires when is_404())
+add_action('muplugins_loaded', ['Funnypot\WordPress\Interceptor', 'runBefore'], 0);    // BEFORE (mu-plugin)
+add_action('plugins_loaded',   ['Funnypot\WordPress\Interceptor', 'runBefore'], 0);    // BEFORE (ordinary-plugin fallback)
+add_action('template_redirect',['Funnypot\WordPress\Interceptor', 'runFallback'], 0);  // FALLBACK (fires when is_404())
 ```
 
 Both entry points are **idempotent** (each guards a static `$ran` flag) so the double BEFORE
@@ -202,7 +202,7 @@ take down the site it protects. The shim therefore:
   auto-update, a host restore, `wp-cli` on a broken install) leaves the shim silently inert, not fatal.
 - **Tolerates shim/plugin version skew.** The shim never inlines plugin logic or hard-codes an
   internal symbol; it `require`s one **stable, versioned entry file** (`mu-entry.php`) and calls a
-  single **guarded static** (`Honeypot\WP\MuEntry::boot()` wrapped in `function_exists`/`class_exists`
+  single **guarded static** (`Funnypot\WordPress\MuEntry::boot()` wrapped in `function_exists`/`class_exists`
   + a `try/catch`), so an old shim against a newer plugin (or the reverse) degrades to inert rather
   than fataling on a renamed/removed method.
 - **Self-heals and self-removes.** On a normal load the plugin **rewrites the shim if it is stale or
@@ -222,7 +222,7 @@ window while a BEFORE posture is configured). This verified mount — not the co
 degraded below the configured one.
 
 ```php
-namespace Honeypot\WP;
+namespace Funnypot\WordPress;
 
 final class Interceptor
 {
@@ -245,7 +245,7 @@ design §2.6) — the single most important FP-safety input, because it is what 
 colliding with a real WP route. D builds a `WpSiteProfile` that satisfies `Funnypot\Policy\SiteProfile`:
 
 ```php
-namespace Honeypot\WP;
+namespace Funnypot\WordPress;
 
 final class WpSiteProfile   // implements the shape core/policy expect for \Funnypot\Policy\SiteProfile
 {
@@ -948,7 +948,7 @@ asset refreshed **in place** (unlike the never-written vendor bundle, §5), expo
    sites generally have no Composer workflow. Rules ship bundled; runtime signed-update is deferred.
 7. **HTTP-only, per-site v1.** No SSH/TCP emulators (those are app-only), no multisite network UI, no
    in-admin rule-update, no wordpress.org SVN release yet — all fast-follow.
-8. **Namespace `Honeypot\WP\`, text domain `honeypot-wp`, single autoloaded settings option** that
+8. **Namespace `Funnypot\WordPress\`, text domain `honeypot-wp`, single autoloaded settings option** that
    renders the policy config array, custom `$wpdb` tables for hits/queue, transient/option-backed
    `WpStateStore`.
 9. **Reputation is a policy config knob + a WP cache backing, not a bespoke first-gate** (§4.8). D

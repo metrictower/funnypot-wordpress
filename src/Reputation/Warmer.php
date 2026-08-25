@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Reputation;
+namespace Funnypot\WordPress\Reputation;
 
 use Funnypot\Mainnet\CircuitBreaker;
-use Honeypot\WP\State\StateBackend;
+use Funnypot\WordPress\State\StateBackend;
 
 /**
  * The SF-6 out-of-band reputation warmer. The interceptor enqueues uncached, OFF-mirror actor IPs

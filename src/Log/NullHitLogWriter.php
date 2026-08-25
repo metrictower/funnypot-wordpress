@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Log;
+namespace Funnypot\WordPress\Log;
 
 /** The default hit-log writer: swallows every row (logging off). */
 final class NullHitLogWriter implements HitLogWriter

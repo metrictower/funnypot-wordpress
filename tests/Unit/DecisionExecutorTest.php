@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Unit;
+namespace Funnypot\WordPress\Tests\Unit;
 
 use Funnypot\Policy\Decision;
 use Funnypot\Policy\FakeResponse;
 use Funnypot\Policy\ReportIntent;
 use Funnypot\Policy\RequestEvidence;
-use Honeypot\WP\DecisionExecutor;
-use Honeypot\WP\Log\HitLogWriter;
-use Honeypot\WP\Report\ReporterBridge;
+use Funnypot\WordPress\DecisionExecutor;
+use Funnypot\WordPress\Log\HitLogWriter;
+use Funnypot\WordPress\Report\ReporterBridge;
 
 final class DecisionExecutorTest extends TestCase
 {

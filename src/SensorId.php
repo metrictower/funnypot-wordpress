@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP;
+namespace Funnypot\WordPress;
 
 /**
  * Per-install sensor UUID (design §4.11, D3). Generated ONCE on first run and persisted to a

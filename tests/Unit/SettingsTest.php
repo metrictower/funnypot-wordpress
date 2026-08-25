@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Unit;
+namespace Funnypot\WordPress\Tests\Unit;
 
-use Honeypot\WP\Settings;
+use Funnypot\WordPress\Settings;
 
 final class SettingsTest extends TestCase
 {

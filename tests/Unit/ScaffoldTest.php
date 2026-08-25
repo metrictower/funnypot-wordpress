@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Unit;
+namespace Funnypot\WordPress\Tests\Unit;
 
 use Funnypot\Policy\PolicyEngine;
 use Funnypot\Mainnet\Client;
-use Funnypot\Honeypot;
-use Honeypot\WP\Version;
+use Funnypot\Core\Honeypot;
+use Funnypot\WordPress\Version;
 
 /**
  * Phase 0: the Composer autoloader resolves the plugin namespace AND the three bundled

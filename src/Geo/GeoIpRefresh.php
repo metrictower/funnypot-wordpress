@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Geo;
+namespace Funnypot\WordPress\Geo;
 
 use Funnypot\Mainnet\Transport\Transport;
-use Honeypot\WP\Settings;
-use Honeypot\WP\State\StateBackend;
+use Funnypot\WordPress\Settings;
+use Funnypot\WordPress\State\StateBackend;
 
 /**
  * R2 local-GeoIP-DB refresh: a cron-driven, ETag/Last-Modified-conditional pull of the local GeoIP

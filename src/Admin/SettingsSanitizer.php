@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Admin;
+namespace Funnypot\WordPress\Admin;
 
-use Honeypot\WP\Settings;
+use Funnypot\WordPress\Settings;
 
 /**
  * The register_setting sanitize callback (design §6.6). Whitelists raw admin input to the Settings

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Admin;
+namespace Funnypot\WordPress\Admin;
 
 /**
  * Admin-notice copy for a degraded BEFORE mount (Wordfence gap a). Pure decision — extracted so it is

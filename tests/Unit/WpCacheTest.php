@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Unit;
+namespace Funnypot\WordPress\Tests\Unit;
 
-use Honeypot\WP\Reputation\WpCache;
+use Funnypot\WordPress\Reputation\WpCache;
 
 final class WpCacheTest extends TestCase
 {

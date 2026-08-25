@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\State;
+namespace Funnypot\WordPress\State;
 
 /**
  * The opt-in RS-10 backend for hosts without a persistent object cache but with a writable state path.

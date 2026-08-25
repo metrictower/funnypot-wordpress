@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Unit;
+namespace Funnypot\WordPress\Tests\Unit;
 
-use Honeypot\WP\MuLoaderInstaller;
+use Funnypot\WordPress\MuLoaderInstaller;
 
 final class MuLoaderInstallerTest extends TestCase
 {
@@ -36,7 +36,7 @@ final class MuLoaderInstallerTest extends TestCase
     {
         $body = MuLoaderInstaller::shimBody('/some/plugin/mu-entry.php');
         $this->assertStringContainsString('if (!is_file($honeypot_wp_bootstrap)) { return; }', $body);
-        $this->assertStringContainsString("class_exists('Honeypot\\\\WP\\\\MuEntry')", $body);
+        $this->assertStringContainsString("class_exists('Funnypot\\\\WordPress\\\\MuEntry')", $body);
         $this->assertStringContainsString('method_exists', $body);
         $this->assertStringContainsString('catch (\\Throwable', $body);
     }

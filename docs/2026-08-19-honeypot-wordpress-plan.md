@@ -93,7 +93,7 @@ tests and "a real WordPress in Docker" for integration. This plan sets up:
 
 ### Conventions (from the design §4)
 
-Namespace `Honeypot\WP\` (PSR-4 → `src/`). Text domain `honeypot-wp`. Settings option
+Namespace `Funnypot\WordPress\` (PSR-4 → `src/`). Text domain `honeypot-wp`. Settings option
 `honeypot_wp_settings`. Tables `{$wpdb->prefix}honeypot_wp_hits`, `{$wpdb->prefix}honeypot_wp_report_queue`
 (+ dedup/daily sidecar). **All D glue code is PHP 7.3-compatible**: no enums, no `match`, no
 constructor property promotion, no named args in D's own calls, no arrow functions in shipped code, no
@@ -107,8 +107,8 @@ old WP hosts once C lands.)
 **Change.** Create the plugin skeleton so `vendor/bin/phpunit` runs:
 - `composer.json` — name `metrictower/honeypot-wordpress`, `"require": {"php": ">=7.3",
   "metrictower/funnypot-policy": "@dev"}` (which pulls `funnypot-core` + `mainnet-client`
-  transitively), `require-dev` phpunit/brain-monkey/mockery, PSR-4 `Honeypot\\WP\\ → src/` and
-  `Honeypot\\WP\\Tests\\ → tests/`, `repositories` path entries to `../funnypot-policy`,
+  transitively), `require-dev` phpunit/brain-monkey/mockery, PSR-4 `Funnypot\\WordPress\\ → src/` and
+  `Funnypot\\WordPress\\Tests\\ → tests/`, `repositories` path entries to `../funnypot-policy`,
   `../funnypot-core`, `../mainnet-client`, and scripts `test` / `test:integration`.
 - `phpunit.xml.dist` — two testsuites: `unit` (`tests/Unit`) and `integration` (`tests/Integration`),
   `bootstrap=tests/bootstrap.php`.
@@ -119,7 +119,7 @@ old WP hosts once C lands.)
 - `.gitignore` (vendor/, node_modules/, build/), `README.md` stub.
 
 **Test first.** `tests/Unit/ScaffoldTest.php`: asserts the Composer autoloader resolves
-`Honeypot\WP\` (e.g. a trivial `Honeypot\WP\Version::STRING` constant class) and that Brain Monkey's
+`Funnypot\WordPress\` (e.g. a trivial `Funnypot\WordPress\Version::STRING` constant class) and that Brain Monkey's
 `Monkey\setUp()`/`tearDown()` cycle runs without error.
 
 **Verify.** `composer install && vendor/bin/phpunit --testsuite unit` → green (1 test).

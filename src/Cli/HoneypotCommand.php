@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Cli;
+namespace Funnypot\WordPress\Cli;
 
-use Honeypot\WP\Settings;
+use Funnypot\WordPress\Settings;
 
 /**
  * `wp honeypot <sub>` (design §4.10). The status summary is a PURE builder (unit-tested) reporting the

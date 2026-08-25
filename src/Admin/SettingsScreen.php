@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Admin;
+namespace Funnypot\WordPress\Admin;
 
-use Honeypot\WP\Plugin;
-use Honeypot\WP\Settings;
+use Funnypot\WordPress\Plugin;
+use Funnypot\WordPress\Settings;
 
 /**
  * Settings -> Honeypot (design §4.7). The screen's one job is to produce the stored settings that

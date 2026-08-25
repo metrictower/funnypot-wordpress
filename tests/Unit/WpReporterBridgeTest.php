@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Unit;
+namespace Funnypot\WordPress\Tests\Unit;
 
 use Funnypot\Policy\ReportIntent;
-use Honeypot\WP\Report\WpReporterBridge;
-use Honeypot\WP\Settings;
-use Honeypot\WP\Tests\Fakes\InMemoryReportQueue;
-use Honeypot\WP\Tests\Fakes\RecordingTransport;
+use Funnypot\WordPress\Report\WpReporterBridge;
+use Funnypot\WordPress\Settings;
+use Funnypot\WordPress\Tests\Fakes\InMemoryReportQueue;
+use Funnypot\WordPress\Tests\Fakes\RecordingTransport;
 
 final class WpReporterBridgeTest extends TestCase
 {

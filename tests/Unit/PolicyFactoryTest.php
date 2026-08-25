@@ -2,19 +2,19 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Unit;
+namespace Funnypot\WordPress\Tests\Unit;
 
 use Funnypot\Policy\Decision;
 use Funnypot\Policy\PolicyEngine;
-use Honeypot\WP\CoreEvaluator;
-use Honeypot\WP\PolicyFactory;
-use Honeypot\WP\RequestFactory;
-use Honeypot\WP\Settings;
-use Honeypot\WP\Tests\Fakes\FakeCoreEvaluator;
-use Honeypot\WP\Tests\Fakes\InMemoryBackend;
-use Honeypot\WP\Tests\Fakes\MutableClock;
-use Honeypot\WP\Tests\Fakes\RecordingTransport;
-use Honeypot\WP\WpStateStore;
+use Funnypot\WordPress\CoreEvaluator;
+use Funnypot\WordPress\PolicyFactory;
+use Funnypot\WordPress\RequestFactory;
+use Funnypot\WordPress\Settings;
+use Funnypot\WordPress\Tests\Fakes\FakeCoreEvaluator;
+use Funnypot\WordPress\Tests\Fakes\InMemoryBackend;
+use Funnypot\WordPress\Tests\Fakes\MutableClock;
+use Funnypot\WordPress\Tests\Fakes\RecordingTransport;
+use Funnypot\WordPress\WpStateStore;
 
 final class PolicyFactoryTest extends TestCase
 {
@@ -59,7 +59,7 @@ final class PolicyFactoryTest extends TestCase
 
         $server = array('REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/some-path', 'REMOTE_ADDR' => '203.0.113.9');
         $evidence = RequestFactory::evidence($server, null, $s);
-        $profile = (new \Honeypot\WP\WpSiteProfile(null))->toPolicyProfile('/some-path');
+        $profile = (new \Funnypot\WordPress\WpSiteProfile(null))->toPolicyProfile('/some-path');
 
         // The country gate resolved a listed country via the wired WpGeoIp -> block at before/WAF.
         $decision = $engine->evaluate($evidence, $profile);
@@ -80,7 +80,7 @@ final class PolicyFactoryTest extends TestCase
 
         $server = array('REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/some-path', 'REMOTE_ADDR' => '203.0.113.9');
         $evidence = RequestFactory::evidence($server, null, $s);
-        $profile = (new \Honeypot\WP\WpSiteProfile(null))->toPolicyProfile('/some-path');
+        $profile = (new \Funnypot\WordPress\WpSiteProfile(null))->toPolicyProfile('/some-path');
         $engine->evaluate($evidence, $profile);
 
         $this->assertSame(0, $calls, 'geo is never resolved when country policy is off');
@@ -98,9 +98,9 @@ final class PolicyFactoryTest extends TestCase
         // checkActive true -> MainnetReputation wired over F's Client; an injected transport keeps it
         // off the network. cachedVerdict is a local read (no socket), so evaluate must not error.
         $deps = $this->deps($clock, array(
-            'evaluator' => new FakeCoreEvaluator(\Funnypot\Verdict::CLEAN),
+            'evaluator' => new FakeCoreEvaluator(\Funnypot\Core\Verdict::CLEAN),
             'transport' => new RecordingTransport(),
-            'cache' => new \Honeypot\WP\Reputation\WpCache(
+            'cache' => new \Funnypot\WordPress\Reputation\WpCache(
                 static function () {
                     return false;
                 },
@@ -116,7 +116,7 @@ final class PolicyFactoryTest extends TestCase
 
         $server = array('REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/some-path', 'REMOTE_ADDR' => '203.0.113.9', 'HTTP_USER_AGENT' => 'Mozilla/5.0', 'HTTP_ACCEPT' => 'text/html', 'HTTP_ACCEPT_LANGUAGE' => 'en', 'HTTP_ACCEPT_ENCODING' => 'gzip');
         $evidence = RequestFactory::evidence($server, null, $s);
-        $profile = (new \Honeypot\WP\WpSiteProfile(null))->toPolicyProfile('/some-path');
+        $profile = (new \Funnypot\WordPress\WpSiteProfile(null))->toPolicyProfile('/some-path');
 
         $decision = $engine->evaluate($evidence, $profile);
         // Clean content + no cached verdict -> the request path made no synchronous check; allow.

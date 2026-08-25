@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Unit;
+namespace Funnypot\WordPress\Tests\Unit;
 
 use Funnypot\Policy\Decision;
 use Funnypot\Policy\RequestEvidence;
 use Funnypot\Policy\SiteProfile;
-use Honeypot\WP\Interceptor;
-use Honeypot\WP\Settings;
-use Honeypot\WP\Tests\Fakes\InMemoryBackend;
-use Honeypot\WP\WpClock;
-use Honeypot\WP\WpStateStore;
+use Funnypot\WordPress\Interceptor;
+use Funnypot\WordPress\Settings;
+use Funnypot\WordPress\Tests\Fakes\InMemoryBackend;
+use Funnypot\WordPress\WpClock;
+use Funnypot\WordPress\WpStateStore;
 
 final class InterceptorTest extends TestCase
 {

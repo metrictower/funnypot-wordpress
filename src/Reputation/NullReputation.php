@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Reputation;
+namespace Funnypot\WordPress\Reputation;
 
 use Funnypot\Policy\Port\ReputationInterface;
 use Funnypot\Policy\ReputationVerdict;

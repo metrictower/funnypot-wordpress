@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Unit;
+namespace Funnypot\WordPress\Tests\Unit;
 
 use Funnypot\Policy\Decision;
 use Funnypot\Policy\FakeResponse;
 use Funnypot\Policy\RequestEvidence;
-use Honeypot\WP\CoreEvaluator;
-use Honeypot\WP\DecisionExecutor;
-use Honeypot\WP\PolicyFactory;
-use Honeypot\WP\RequestFactory;
-use Honeypot\WP\Settings;
-use Honeypot\WP\Tests\Fakes\FakeCoreEvaluator;
-use Honeypot\WP\Tests\Fakes\InMemoryBackend;
-use Honeypot\WP\Tests\Fakes\MutableClock;
-use Honeypot\WP\WpSiteProfile;
-use Honeypot\WP\WpStateStore;
+use Funnypot\WordPress\CoreEvaluator;
+use Funnypot\WordPress\DecisionExecutor;
+use Funnypot\WordPress\PolicyFactory;
+use Funnypot\WordPress\RequestFactory;
+use Funnypot\WordPress\Settings;
+use Funnypot\WordPress\Tests\Fakes\FakeCoreEvaluator;
+use Funnypot\WordPress\Tests\Fakes\InMemoryBackend;
+use Funnypot\WordPress\Tests\Fakes\MutableClock;
+use Funnypot\WordPress\WpSiteProfile;
+use Funnypot\WordPress\WpStateStore;
 
 /**
  * Priority-3 deliverable: a scanner-probe / sacrificial evidence flows through the REAL PolicyEngine
@@ -149,7 +149,7 @@ final class WiredPortsTest extends TestCase
         $profile = (new WpSiteProfile(null))->toPolicyProfile('/wp-login.php');
 
         $engine = PolicyFactory::forPosition($s, 'before', array(
-            'evaluator' => new FakeCoreEvaluator(\Funnypot\Verdict::CLEAN),
+            'evaluator' => new FakeCoreEvaluator(\Funnypot\Core\Verdict::CLEAN),
             'store' => $store,
             'clock' => $clock,
             'ctx' => $ctx,

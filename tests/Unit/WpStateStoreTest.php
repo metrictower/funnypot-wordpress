@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Tests\Unit;
+namespace Funnypot\WordPress\Tests\Unit;
 
 use Funnypot\Policy\Pin;
 use Funnypot\Policy\ReputationVerdict;
 use Funnypot\Policy\RuleState;
-use Honeypot\WP\State\FileBackend;
-use Honeypot\WP\State\ObjectCacheBackend;
-use Honeypot\WP\Tests\Fakes\InMemoryBackend;
-use Honeypot\WP\Tests\Fakes\MutableClock;
-use Honeypot\WP\WpStateStore;
+use Funnypot\WordPress\State\FileBackend;
+use Funnypot\WordPress\State\ObjectCacheBackend;
+use Funnypot\WordPress\Tests\Fakes\InMemoryBackend;
+use Funnypot\WordPress\Tests\Fakes\MutableClock;
+use Funnypot\WordPress\WpStateStore;
 
 final class WpStateStoreTest extends TestCase
 {

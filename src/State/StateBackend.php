@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\State;
+namespace Funnypot\WordPress\State;
 
 /**
  * A backend-independent TTL key/value seam (RS-10). WpStateStore maps every port method onto this, so

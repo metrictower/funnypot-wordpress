@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Geo;
+namespace Funnypot\WordPress\Geo;
 
 use Funnypot\Policy\Port\GeoIpInterface;
 

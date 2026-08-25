@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\State;
+namespace Funnypot\WordPress\State;
 
 /**
  * The default RS-10 backend: WP transients, which ride the persistent object cache when the host has

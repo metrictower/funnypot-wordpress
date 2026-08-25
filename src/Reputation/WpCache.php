@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Honeypot\WP\Reputation;
+namespace Funnypot\WordPress\Reputation;
 
 use Funnypot\Mainnet\Cache\Cache;
 
