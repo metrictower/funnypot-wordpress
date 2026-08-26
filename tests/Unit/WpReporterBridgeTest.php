@@ -29,14 +29,14 @@ final class WpReporterBridgeTest extends TestCase
         $queue = new InMemoryReportQueue();
         $bridge = new WpReporterBridge($this->settings(), $queue, new RecordingTransport());
 
-        $intent = new ReportIntent('203.0.113.9', 'attack-class', 'honeypot', 200, array('bad-bot'), 'dk1');
+        $intent = new ReportIntent('203.0.113.9', 'attack-class', 'honeypot', 200, array(ReportIntent::CATEGORY_BAD_BOT), 'dk1');
         $bridge->enqueueIntent($intent);
 
         $this->assertCount(1, $queue->rows);
         $row = $queue->rows[0];
         // comment is the comment, categories is the category CSV — NOT swapped (M8 regression guard).
         $this->assertSame('attack-class', $row['comment']);
-        $this->assertSame('bad-bot', $row['categories']);
+        $this->assertSame($intent->categories()[0], $row['categories']);
         $this->assertSame('203.0.113.9', $row['ip']);
     }
 

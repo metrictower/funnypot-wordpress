@@ -125,7 +125,7 @@ final class DecisionExecutorTest extends TestCase
     public function testReportIntentIsEnqueuedOnce(): void
     {
         $exec = $this->executor();
-        $intent = new ReportIntent('203.0.113.9', 'attack-class', 'honeypot', 200, array('bad-bot'), 'dedup1');
+        $intent = new ReportIntent('203.0.113.9', 'attack-class', 'honeypot', 200, array(ReportIntent::CATEGORY_BAD_BOT), 'dedup1');
         $decision = Decision::block(403, 'attack-class')->withReport($intent);
 
         $exec->execute($decision, $this->evidence());
@@ -157,7 +157,7 @@ final class DecisionExecutorTest extends TestCase
         $this->emitted = array();
         $this->halted = 0;
 
-        $intent = new ReportIntent('203.0.113.9', 'attack-class', 'honeypot', 200, array('bad-bot'), 'dk');
+        $intent = new ReportIntent('203.0.113.9', 'attack-class', 'honeypot', 200, array(ReportIntent::CATEGORY_BAD_BOT), 'dk');
         $decision = Decision::deceive($this->fake(), null, 'sacrificial-path')->withReport($intent);
 
         // Must not throw; emit + halt still happen.
