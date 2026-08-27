@@ -36,7 +36,8 @@ final class WpReporterBridgeTest extends TestCase
         $row = $queue->rows[0];
         // comment is the comment, categories is the category CSV — NOT swapped (M8 regression guard).
         $this->assertSame('attack-class', $row['comment']);
-        $this->assertSame($intent->categories()[0], $row['categories']);
+        $this->assertSame('bad_bot', $row['categories']);
+        $this->assertSame('bad_bot', ReportIntent::CATEGORY_BAD_BOT);
         $this->assertSame('203.0.113.9', $row['ip']);
     }
 
