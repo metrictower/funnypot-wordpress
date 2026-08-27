@@ -131,9 +131,9 @@ final class Settings
 
         // STYLE / engine.
         $d['response_style'] = self::whitelist(
-            isset($r['response_style']) ? (string) $r['response_style'] : 'minimal',
+            isset($r['response_style']) ? (string) $r['response_style'] : 'realistic',
             array('minimal', 'realistic', 'taunt'),
-            'minimal'
+            'realistic'
         );
         $d['severity_ceiling'] = self::whitelist(
             isset($r['severity_ceiling']) ? (string) $r['severity_ceiling'] : 'high',
