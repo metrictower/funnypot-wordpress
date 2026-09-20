@@ -26,6 +26,13 @@ final class SettingsResponseModeTest extends TestCase
         $this->assertSame('realistic', $this->settings(array('response_mode' => 'evil'))->responseMode());
     }
 
+    public function testBlockedModeWhitelists(): void
+    {
+        $s = $this->settings(array('response_mode' => 'blocked'));
+        $this->assertSame('blocked', $s->responseMode());
+        $this->assertFalse($s->responseModeServesDecoys());
+    }
+
     public function testAbsentModeDefaultsRealistic(): void
     {
         $this->assertSame('realistic', $this->settings(array())->responseMode());

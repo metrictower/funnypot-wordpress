@@ -61,6 +61,36 @@ final class ResponseModeMappingTest extends TestCase
         $this->assertSame('block', $actions['attack_class']);
     }
 
+    public function testBlockedClampsEveryNonAllowBandToBlock(): void
+    {
+        $actions = $this->settings('blocked')->toPolicyConfig('fallback')['actions'];
+
+        // The inverse of stealth: deceive/log/block all clamp UP to block (the assertions that fail on a
+        // partial implementation are the deceive->block and log->block up-clamps).
+        $this->assertSame('block', $actions['scanner_probe']);
+        $this->assertSame('block', $actions['suspicious']);
+        $this->assertSame('block', $actions['attack_class']);
+        // allow is left intact so clean traffic proceeds untouched (no lockout).
+        $this->assertSame('allow', $actions['clean']);
+    }
+
+    public function testBlockedServesNoDecoy(): void
+    {
+        $s = Settings::fromArray(array(
+            'enabled' => true,
+            'response_mode' => 'blocked',
+            'decoy_xmlrpc' => true,
+            'decoy_wp_login' => true,
+        ), static function () {
+            return null;
+        });
+
+        $this->assertFalse($s->responseModeServesDecoys());
+        $map = $s->decoyMap();
+        $this->assertFalse($map['xmlrpc']);
+        $this->assertFalse($map['wp_login']);
+    }
+
     public function testModeSelectsCoreResponseStyle(): void
     {
         $salt = static function () {
@@ -69,5 +99,7 @@ final class ResponseModeMappingTest extends TestCase
         $this->assertSame('minimal', EvaluatorConfig::fromSettings($this->settings('stealth'), $salt)->responseStyle);
         $this->assertSame('realistic', EvaluatorConfig::fromSettings($this->settings('realistic'), $salt)->responseStyle);
         $this->assertSame('taunt', EvaluatorConfig::fromSettings($this->settings('taunt'), $salt)->responseStyle);
+        // blocked bypasses core synthesis; the style is moot but must be a valid enum value.
+        $this->assertSame('minimal', EvaluatorConfig::fromSettings($this->settings('blocked'), $salt)->responseStyle);
     }
 }

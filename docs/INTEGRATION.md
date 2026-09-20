@@ -71,6 +71,24 @@ valid slug — e.g. `wp option update honeypot_wp_settings --format=json
 | `POST /wp-login.php?action=postpass` | works (real WordPress) | password-protected-post carve-out |
 | deactivate the plugin / clear the slug | `/wp-login.php` is the real login again | no on-disk change, no rewrite flush |
 
+### Blocked response mode (FP-0494)
+
+`response_mode` selects the served posture: `stealth` (capture-only plain 404), `realistic` (default —
+byte-exact fakes + decoys), `taunt` (troll persona over the decoy), or `blocked`. In `blocked` mode
+every non-`allow` band is clamped **up** to `block`, so instead of a decoy the plugin returns a generic
+`text/html` **403 "Access Denied"** page (no WAF/product branding, an inert reference token). Provision
+with e.g. `wp option update honeypot_wp_settings --format=json
+'{"enabled":true,"posture":"honeypot","response_mode":"blocked"}'` — then assert:
+
+| Request | Expected | Meaning |
+| --- | --- | --- |
+| `GET /.env` | `403`, `text/html`, generic "Access Denied" block page (no decoy body) | non-`allow` band clamped to block |
+| `GET /<unknown benign path>` | `403` block page | the `suspicious`/`attack` bands 403 too (a hardened posture; opt-in FP risk) |
+| `GET /` | `200`, untouched | `allow` (clean traffic) is never blocked |
+
+It is opt-in because a block page advertises a defense (a fingerprint tradeoff vs the stay-hidden
+default). `allow` and the relocated-login `safe_paths` are left intact — no operator lockout.
+
 ## Environment notes
 
 - **PHP 8.2** in the container (`.wp-env.json` `phpVersion`) — a version WordPress 6.5 fully supports.
