@@ -68,6 +68,9 @@ final class InterceptorTest extends TestCase
         Interceptor::$executorProvider = null;
         Interceptor::$storeProvider = null;
         Interceptor::$installedSetProvider = null;
+        Interceptor::$genuineRouteProvider = null;
+        Interceptor::$decoyOwnershipProvider = null;
+        Interceptor::$coreProvider = null;
         Interceptor::reset();
         parent::tearDown();
     }
@@ -275,6 +278,195 @@ final class InterceptorTest extends TestCase
         $this->assertInstanceOf(SiteProfile::class, $captured);
         $this->assertTrue($captured->routeExists('/wp-content/plugins/tutor/readme.txt'));
         $this->assertFalse($captured->isSacrificialPath('/wp-content/plugins/tutor/readme.txt'));
+    }
+
+    // --- FP-0504: serve core decoys on WP-preempted scanner paths -------------------------------
+
+    /** The pure fail-safe-to-genuine oracle. not-genuine ONLY for is_404 or empty-query fallthrough. */
+    public function testIsGenuineRouteTruthTable(): void
+    {
+        // (a) hard 404 -> not genuine.
+        $this->assertFalse(Interceptor::isGenuineRoute(true, false, false, false));
+        $this->assertFalse(Interceptor::isGenuineRoute(true, true, true, true));
+        // (b) front-page fallthrough off root with an EMPTY main query -> not genuine (/phpmyadmin).
+        $this->assertFalse(Interceptor::isGenuineRoute(false, true, false, true));
+        // SEO sitemap: front-page/home off root but a NON-empty main query (carries `sitemap`) -> genuine.
+        $this->assertTrue(Interceptor::isGenuineRoute(false, true, false, false));
+        // Real homepage requested at "/" -> genuine (requestIsRoot excludes it).
+        $this->assertTrue(Interceptor::isGenuineRoute(false, true, true, true));
+        // feed/robots/favicon/search land here (WP suppresses is_home) -> genuine regardless of query.
+        $this->assertTrue(Interceptor::isGenuineRoute(false, false, false, true));
+        $this->assertTrue(Interceptor::isGenuineRoute(false, false, false, false));
+    }
+
+    /** /phpmyadmin (owned, WP-preempted soft-404) serves the decoy under realistic. */
+    public function testOwnedPreemptedPathServesDecoyUnderRealistic(): void
+    {
+        $this->settings(array('enabled' => true, 'posture' => 'honeypot', 'response_mode' => 'realistic'));
+        Interceptor::$serverProvider = static function () {
+            return array('REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/phpmyadmin', 'REMOTE_ADDR' => '203.0.113.9');
+        };
+        Interceptor::$is404Provider = static function () {
+            return false; // WP soft-resolved it (no hard 404)
+        };
+        Interceptor::$genuineRouteProvider = static function () {
+            return false; // not genuine (front-page fallthrough, empty query)
+        };
+        Interceptor::$decoyOwnershipProvider = static function () {
+            return true; // core owns a decoy for /phpmyadmin
+        };
+        $this->engineReturning(Decision::deceive(new \Funnypot\Policy\FakeResponse(200, array('Content-Type' => 'text/html'), '<title>phpMyAdmin', 'text/html')));
+
+        Interceptor::runFallback();
+
+        $this->assertCount(1, $this->executed);
+        $this->assertSame(Decision::DECEIVE, $this->executed[0]->action());
+    }
+
+    /**
+     * Legit no-object endpoints (feed/robots/favicon/search) and a real page are LEFT UNTOUCHED under
+     * BOTH realistic and taunt, even when the evaluator reports the path OWNED — the oracle spares them.
+     */
+    public function testGenuineEndpointsNeverDecoyedEvenWhenOwned(): void
+    {
+        foreach (array('realistic', 'taunt') as $mode) {
+            foreach (array('/feed', '/feed/', '/robots.txt', '/favicon.ico', '/?s=foo', '/hello-world') as $path) {
+                Interceptor::reset();
+                $this->executed = array();
+                $this->settings(array('enabled' => true, 'posture' => 'honeypot', 'response_mode' => $mode));
+                Interceptor::$serverProvider = static function () use ($path) {
+                    return array('REQUEST_METHOD' => 'GET', 'REQUEST_URI' => $path, 'REMOTE_ADDR' => '203.0.113.9');
+                };
+                Interceptor::$is404Provider = static function () {
+                    return false;
+                };
+                Interceptor::$genuineRouteProvider = static function () {
+                    return true; // WP resolved a genuine route -> never touch
+                };
+                Interceptor::$decoyOwnershipProvider = static function () {
+                    return true; // even though core OWNS a decoy for it
+                };
+                $this->engineReturning(Decision::deceive(new \Funnypot\Policy\FakeResponse(200, array(), 'FAKE', 'text/plain')));
+
+                Interceptor::runFallback();
+
+                $this->assertCount(0, $this->executed, "$path must not be decoyed under $mode");
+            }
+        }
+    }
+
+    /**
+     * SEO-plugin sitemaps (is_home=true, non-root, NON-empty main query carrying `sitemap`) resolve as
+     * genuine and are left untouched even when the evaluator reports them OWNED. The bare harness cannot
+     * route Yoast/RankMath, so this unit case is the authoritative guard for the sitemap subclass.
+     */
+    public function testSeoSitemapWithNonEmptyQueryIsGenuineNotDecoyed(): void
+    {
+        $this->settings(array('enabled' => true, 'posture' => 'honeypot', 'response_mode' => 'realistic'));
+        Interceptor::$serverProvider = static function () {
+            return array('REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/sitemap_index.xml', 'REMOTE_ADDR' => '203.0.113.9');
+        };
+        Interceptor::$is404Provider = static function () {
+            return false;
+        };
+        // The production provider computes isGenuineRoute from WP booleans; mirror it for the sitemap:
+        // is_home=true, non-root, but a NON-empty main query -> genuine.
+        Interceptor::$genuineRouteProvider = static function () {
+            return Interceptor::isGenuineRoute(false, true, false, false);
+        };
+        Interceptor::$decoyOwnershipProvider = static function () {
+            return true; // core owns /sitemap_index.xml — ownership must NOT promote it
+        };
+        $this->engineReturning(Decision::deceive(new \Funnypot\Policy\FakeResponse(200, array(), 'FAKE', 'text/plain')));
+
+        Interceptor::runFallback();
+
+        $this->assertCount(0, $this->executed);
+    }
+
+    /** A guard fault (unreadable WP state) degrades to genuine: never decoy a real page (doubt=>genuine). */
+    public function testGenuineRouteProviderFaultDegradesToGenuine(): void
+    {
+        $this->settings(array('enabled' => true, 'posture' => 'honeypot', 'response_mode' => 'realistic'));
+        Interceptor::$is404Provider = static function () {
+            return false;
+        };
+        Interceptor::$genuineRouteProvider = static function () {
+            throw new \RuntimeException('unreadable $wp');
+        };
+        Interceptor::$decoyOwnershipProvider = static function () {
+            return true;
+        };
+        $this->engineReturning(Decision::deceive(new \Funnypot\Policy\FakeResponse(200, array(), 'FAKE', 'text/plain')));
+
+        Interceptor::runFallback();
+
+        $this->assertCount(0, $this->executed);
+    }
+
+    /** An unowned not-genuine soft-404 is left to WordPress (no forced hard-404). */
+    public function testUnownedPreemptedPathLeavesWpUntouched(): void
+    {
+        $this->settings(array('enabled' => true, 'posture' => 'honeypot', 'response_mode' => 'realistic'));
+        Interceptor::$serverProvider = static function () {
+            return array('REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/random-junk-path', 'REMOTE_ADDR' => '203.0.113.9');
+        };
+        Interceptor::$is404Provider = static function () {
+            return false;
+        };
+        Interceptor::$genuineRouteProvider = static function () {
+            return false; // not genuine
+        };
+        Interceptor::$decoyOwnershipProvider = static function () {
+            return false; // core owns no decoy -> WP proceeds
+        };
+        $this->engineReturning(Decision::deceive(new \Funnypot\Policy\FakeResponse(200, array(), 'FAKE', 'text/plain')));
+
+        Interceptor::runFallback();
+
+        $this->assertCount(0, $this->executed);
+    }
+
+    /** Stealth (capture-only) never serves the decoy on the FP-0504 branch, even for an owned path. */
+    public function testStealthNeverServesPreemptedDecoy(): void
+    {
+        $this->settings(array('enabled' => true, 'posture' => 'honeypot', 'response_mode' => 'stealth'));
+        Interceptor::$serverProvider = static function () {
+            return array('REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/phpmyadmin', 'REMOTE_ADDR' => '203.0.113.9');
+        };
+        Interceptor::$is404Provider = static function () {
+            return false;
+        };
+        Interceptor::$genuineRouteProvider = static function () {
+            return false;
+        };
+        Interceptor::$decoyOwnershipProvider = static function () {
+            return true;
+        };
+        $this->engineReturning(Decision::deceive(new \Funnypot\Policy\FakeResponse(200, array(), 'FAKE', 'text/plain')));
+
+        Interceptor::runFallback();
+
+        $this->assertCount(0, $this->executed);
+    }
+
+    /** The genuine-404 path still serves (legacy default oracle, no ownership pre-check needed). */
+    public function testGenuine404StillServesViaLegacyPath(): void
+    {
+        $this->settings(array('enabled' => true, 'posture' => 'honeypot', 'response_mode' => 'realistic'));
+        Interceptor::$serverProvider = static function () {
+            return array('REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/.env', 'REMOTE_ADDR' => '203.0.113.9');
+        };
+        Interceptor::$is404Provider = static function () {
+            return true; // WP genuinely 404'd
+        };
+        // No genuineRouteProvider wired -> legacy default (only a hard 404 is not-genuine).
+        $this->engineReturning(Decision::deceive(new \Funnypot\Policy\FakeResponse(200, array(), 'APP_KEY=fake', 'text/plain'), null, 'sacrificial-path'));
+
+        Interceptor::runFallback();
+
+        $this->assertCount(1, $this->executed);
+        $this->assertSame(Decision::DECEIVE, $this->executed[0]->action());
     }
 
     public function testMountMarkerRecordedAndMappedByMountState(): void

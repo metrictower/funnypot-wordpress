@@ -48,8 +48,8 @@ final class WiredPortsTest extends TestCase
         $evidence = RequestFactory::evidence($server, null, $s);
         $ctx = CoreEvaluator::contextFromEvidence($evidence);
 
-        // FALLBACK position: is_404 true (WP genuinely 404'd), so /.env is sacrificial.
-        $profile = (new WpSiteProfile(true))->toPolicyProfile('/.env');
+        // FALLBACK position: no genuine object resolved (counterfactual-404), so /.env is sacrificial.
+        $profile = (new WpSiteProfile(false))->toPolicyProfile('/.env');
 
         $engine = PolicyFactory::forPosition($s, 'fallback', array(
             'evaluator' => new FakeCoreEvaluator(),

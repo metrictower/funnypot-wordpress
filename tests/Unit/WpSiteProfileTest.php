@@ -54,14 +54,14 @@ final class WpSiteProfileTest extends TestCase
         $this->assertTrue($p->isSacrificialPath('/wp-login.php'));
     }
 
-    public function testIs404SeamFlipsRouteExistsForResolvedPost(): void
+    public function testRealRouteSeamDrivesRouteExistsForNonReservedPath(): void
     {
-        // FALLBACK position: WP resolved a real post (is_404 === false) -> route exists.
-        $resolved = new WpSiteProfile(false);
+        // FALLBACK position: WP resolved a genuine content object -> route exists.
+        $resolved = new WpSiteProfile(true);
         $this->assertTrue($resolved->routeExists('/hello-world'));
 
-        // Genuine 404 (is_404 === true) -> not a real route.
-        $notFound = new WpSiteProfile(true);
+        // Counterfactual-404 (no genuine object: a hard 404 or a WP-preempted soft-404) -> not a route.
+        $notFound = new WpSiteProfile(false);
         $this->assertFalse($notFound->routeExists('/hello-world'));
 
         // BEFORE position (null): unknown non-reserved path -> not a real route (covered set only).
@@ -69,12 +69,24 @@ final class WpSiteProfileTest extends TestCase
         $this->assertFalse($before->routeExists('/hello-world'));
     }
 
-    public function testIs404AcceptsCallable(): void
+    public function testPanelRootRouteExistsFollowsRealRouteSeam(): void
+    {
+        // FP-0504: a WP-preempted panel-root path is counterfactual-404 (false) -> not a real route,
+        // so the engine can serve the owned decoy; a genuinely-resolved slug (true) stays a real route.
+        $this->assertFalse((new WpSiteProfile(false))->routeExists('/phpmyadmin'));
+        $this->assertTrue((new WpSiteProfile(true))->routeExists('/phpmyadmin'));
+        // BEFORE (null) -> not a real route (only the reserved set is known).
+        $this->assertFalse((new WpSiteProfile(null))->routeExists('/phpmyadmin'));
+        // Reserved prefixes stay real regardless of the seam.
+        $this->assertTrue((new WpSiteProfile(false))->routeExists('/wp-admin/'));
+    }
+
+    public function testRealRouteSeamAcceptsCallable(): void
     {
         $calls = 0;
         $p = new WpSiteProfile(static function () use (&$calls) {
             $calls++;
-            return false;
+            return true;
         });
         $this->assertTrue($p->routeExists('/some-page'));
         $this->assertSame(1, $calls);
