@@ -33,8 +33,10 @@ without Docker.
 ## Why the two provisioning steps
 
 The plugin ships **inert by default** (`enabled=false`) and its honeypot posture intercepts on
-WordPress' `template_redirect` hook, acting only on a genuine `is_404()`. So two preconditions must
-hold before its behavior is observable over HTTP — `bin/wp-env-provision.sh` sets both, idempotently:
+WordPress' `template_redirect` hook (priority 0, before WP's own `redirect_canonical` at priority 10).
+It acts on a genuine `is_404()` **and** — for core-owned scanner paths — on a WP-preempted request WP
+would otherwise 301/soft-200 (see *Scanner panel paths* below). So two preconditions must hold before
+its behavior is observable over HTTP — `bin/wp-env-provision.sh` sets both, idempotently:
 
 1. **Pretty permalinks** (`/%postname%/`). With WordPress' default *plain* permalinks, an unknown
    URL never matches a rewrite rule, so Apache returns its own 404 and WordPress (hence the plugin)
@@ -53,6 +55,30 @@ The integration test also runs this provisioning best-effort in `setUp()`, so a 
 | `GET /.env` | `200`, header `X-Request-Id`, body is a synthetic `.env` (`DB_PASSWORD=…`), `application/octet-stream` | **Deception** — the honeypot upgrades the 404 into a fake-vulnerable hit so the scanner logs a false positive |
 | `GET /<unknown benign path>` | `404`, no `X-Request-Id`, empty body | **Passthrough** — WordPress' own 404; no false positive on benign traffic |
 | `GET /` | `200`, no `X-Request-Id` | **Untouched** — real routes are never intercepted |
+
+### Scanner panel paths (FP-0504)
+
+On a real WordPress site, WP would 301-canonical-redirect or soft-200 (homepage) an unknown panel path
+like `/phpmyadmin`, so it never reaches a clean `is_404()`. The plugin now serves the **core-owned**
+decoy for these at `template_redirect@0` — before the 301 is emitted — so a scanner gets the panel on
+its first request. The decoy content lives in funnypot-core (the same index the dedicated app box
+uses); the plugin asks core "do you own a decoy for this exact path?" and never ships its own path list.
+
+| Request | Observed response | Meaning |
+| --- | --- | --- |
+| `GET /phpmyadmin` | `200`, `X-Detected`, `<title>phpMyAdmin` panel body | **Deception** — core-owned panel served before WP's 301 |
+| `GET /solr/admin`, `/actuator/health`, `/telescope/requests` | `200` + the matching core decoy + `X-Detected` | same — a WP-preempted, core-owned path |
+| `GET /feed/`, `/robots.txt`, `/favicon.ico`, `/?s=…` | WP's real response, **no** `X-Detected`, no panel | **Untouched** — legitimate WP endpoints, spared by the fail-safe-to-genuine oracle even though core owns decoys for some of them |
+| `GET /sitemap_index.xml` (SEO plugin active) | the real SEO sitemap, no `X-Detected` | **Untouched** — carries a `sitemap` query var (non-empty main query) → genuine |
+
+**Safety model.** A path is eligible for the owned-decoy serve only when it is *not genuine* — a hard
+404, or a front-page/blog-index fallthrough off root **with an empty main query** — and then only when
+core owns a decoy. Ownership is **not** a safety signal: core owns decoys for `/feed`, `/robots.txt`,
+`/sitemap.xml`, `/favicon.ico` too, so the fail-safe-to-genuine oracle (`Interceptor::isGenuineRoute`)
+runs first and can only be *narrowed* by ownership, never promoted. Any doubt (an unreadable WP global,
+a `function_exists` miss) resolves to genuine. The serve is gated by the response mode: only
+`realistic`/`taunt` serve the decoy; `stealth`/`blocked` stay WP-normal and log. The bare harness has
+no SEO plugin, so the SEO-sitemap sparing is covered by a unit test, not the harness.
 
 ### Login relocation (FP-0490)
 

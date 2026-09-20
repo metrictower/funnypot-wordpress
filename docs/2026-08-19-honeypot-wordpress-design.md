@@ -185,6 +185,16 @@ double-runs against `runBefore`. Each entry checks the config: `runBefore` retur
 `position.fallback` is set **and** `is_404()` is true (the FALLBACK position only ever upgrades a
 genuine 404 — FP-free by construction, §6.2).
 
+> **FP-0504 update.** The FALLBACK position was extended beyond the genuine-`is_404()` case: on a real
+> WP site WordPress 301-canonical-redirects or soft-200s unknown scanner panel paths (`/phpmyadmin`,
+> `/solr/admin`, …) so they never reach a clean `is_404()`. `runFallback` (still `template_redirect@0`,
+> before `redirect_canonical@10`) now also serves the **core-owned** decoy for a WP-preempted request
+> that a **fail-safe-to-genuine** oracle (`Interceptor::isGenuineRoute`) rules not-genuine — restricted
+> to a hard 404 or a front-page/blog-index fallthrough off root with an empty main query. Every other
+> WP-resolved state (real pages, `/feed`, `/robots.txt`, `/favicon.ico`, search, SEO sitemaps) stays
+> genuine and is never decoyed; ownership can only *narrow* a not-genuine path. Gated by the response
+> mode (realistic/taunt only). See `docs/INTEGRATION.md` § *Scanner panel paths (FP-0504)*.
+
 `register_activation_hook()` copies a tiny loader shim into `wp-content/mu-plugins/` so the BEFORE
 position runs at `muplugins_loaded` — the earliest hook that still has the plugin API and `$_SERVER`
 available, before themes, `init`, and the main query. If the mu-plugins dir is not writable, the plugin
