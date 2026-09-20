@@ -198,3 +198,10 @@ plugin ships **DATA only** via this path — engine **code** still updates via W
 - **`@wordpress/env` is pinned to `10.38.0`.** `10.39.0` added an `@wp-playground/cli` dependency
   that pulls a native `@php-wasm/node` (`fs-ext`) module which fails to compile on Node >= 26. Only
   the Docker path is used here, which needs none of it.
+- **Degrade-safe capture / schema-ensure.** Every request/cron-facing `$wpdb` write to a plugin table
+  (`honeypot_wp_hits`, the report queue/sidecar) runs with wpdb's error output suppressed, so a
+  missing or broken table degrades to a silent no-op — a raw "WordPress database error" is never
+  echoed onto a response as a fingerprint tell. Complementarily, the Docker harness
+  (`docker/wp-init.sh`) verifies the hits table exists after activating the plugin and re-activates
+  once if a first-run activation did not create it, so a fresh `docker compose up` has the schema
+  present without a manual re-activate.
