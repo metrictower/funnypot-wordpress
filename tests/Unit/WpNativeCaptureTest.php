@@ -166,6 +166,203 @@ namespace Funnypot\WordPress\Tests\Unit {
             $this->assertSame(20, $this->agg('rest')['count']);
         }
 
+        // --- FP-0493 pingback SSRF-target capture + relay shield ---------------------------------
+
+        private function pingbackSettings($shieldOn, $enabled = true)
+        {
+            return Settings::fromArray(
+                array('enabled' => $enabled, 'wp_pingback_shield' => $shieldOn),
+                static function ($name) {
+                    return null;
+                }
+            );
+        }
+
+        /** Wire the seams with an explicit Settings instance (for the pingback shield toggle). */
+        private function wireSettings($settings, $hitlog = null)
+        {
+            $log = $hitlog !== null ? $hitlog : $this->inner;
+            $store = $this->store;
+            $server = $this->server;
+
+            WpNativeCapture::$settingsProvider = static function () use ($settings) {
+                return $settings;
+            };
+            WpNativeCapture::$serverProvider = static function () use (&$server) {
+                return $server;
+            };
+            WpNativeCapture::$depsProvider = static function () use ($log, $store) {
+                return array('hitlog' => $log, 'store' => $store);
+            };
+        }
+
+        public function testPingbackCapturesTargetAndShortCircuits(): void
+        {
+            $this->wireSettings($this->pingbackSettings(true));
+
+            $out = WpNativeCapture::onPingbackSourceUri(
+                'http://169.254.169.254/latest/meta-data/',
+                'http://blog.tld/?p=1'
+            );
+
+            // (a) exactly '' -> WP faults BEFORE wp_safe_remote_get (the short-circuit that blocks the fetch)
+            $this->assertSame('', $out, 'shield-on must return empty string to short-circuit WP fetch');
+
+            // (b) the SSRF target lands in the bounded local sample; velocity = 1
+            $agg = $this->agg('pingback');
+            $this->assertSame(1, $agg['count']);
+            $this->assertContains('http://169.254.169.254/latest/meta-data/', $agg['targets']);
+
+            // (c) one durable rollup row with the opaque reason, on the fixed route, action=log
+            $this->assertCount(1, $this->inner->rows);
+            $row = $this->inner->rows[0];
+            $this->assertSame('xmlrpc_pingback_target', $row['reason']);
+            $this->assertSame('/xmlrpc.php', $row['path']);
+            $this->assertSame('log', $row['action']);
+            // the URL is never a durable-row column (no schema change)
+            $this->assertArrayNotHasKey('url', $row);
+            $this->assertNotContains('http://169.254.169.254/latest/meta-data/', $row, 'URL must not be a durable column');
+        }
+
+        /** Structural: no HTTP/socket primitive exists anywhere on the pingback path (SSRF-safe by construction). */
+        public function testNoOutboundFetchOnPingbackPath(): void
+        {
+            $ref = new \ReflectionClass(WpNativeCapture::class);
+            $code = '';
+            foreach (token_get_all(file_get_contents($ref->getFileName())) as $token) {
+                if (is_array($token)) {
+                    if ($token[0] === T_COMMENT || $token[0] === T_DOC_COMMENT) {
+                        continue; // scan CODE tokens only, not documentation naming the primitives
+                    }
+                    $code .= $token[1];
+                } else {
+                    $code .= $token;
+                }
+            }
+            foreach (array('wp_remote_get', 'wp_remote_post', 'wp_safe_remote_get', 'wp_safe_remote_post',
+                'curl_exec', 'curl_init', 'fopen', 'file_get_contents', 'fsockopen', 'stream_socket_client') as $prim) {
+                $this->assertStringNotContainsString($prim, $code, "capture must never reference $prim");
+            }
+        }
+
+        public function testPingbackFloodIsRollupGated(): void
+        {
+            $this->wireSettings($this->pingbackSettings(true));
+
+            for ($i = 0; $i < 50; $i++) {
+                // Repeat + vary URLs: the sample must stay distinct and bounded, not grow to 50.
+                $url = ($i % 12 === 0) ? 'http://victim.example/' . $i : 'http://repeat.example/';
+                $this->assertSame('', WpNativeCapture::onPingbackSourceUri($url, 'http://blog.tld/?p=1'));
+            }
+
+            $this->assertCount(1, $this->inner->rows, '50 pingbacks in one window collapse to ONE durable row');
+            $agg = $this->agg('pingback');
+            $this->assertSame(50, $agg['count'], 'the flood is captured as velocity');
+            $this->assertLessThanOrEqual(
+                WpNativeCapture::PINGBACK_TARGET_CAP,
+                count($agg['targets']),
+                'the distinct target sample is bounded, never one-per-request'
+            );
+
+            // A fresh window allows one more durable row.
+            $this->clock->advance(WpNativeCapture::WINDOW_SECS + 1);
+            WpNativeCapture::onPingbackSourceUri('http://again.example/', 'http://blog.tld/?p=1');
+            $this->assertCount(2, $this->inner->rows, 'a new window allows one more rollup row');
+        }
+
+        public function testPingbackTargetIsSanitizedAndBounded(): void
+        {
+            $this->wireSettings($this->pingbackSettings(true));
+
+            $hostile = "http://evil\r\n\x00.example/" . str_repeat('A', 400);
+            WpNativeCapture::onPingbackSourceUri($hostile, 'http://blog.tld/?p=1');
+
+            $agg = $this->agg('pingback');
+            $this->assertCount(1, $agg['targets']);
+            $stored = $agg['targets'][0];
+            $this->assertLessThanOrEqual(255, strlen($stored), 'stored target is length-capped');
+            $this->assertDoesNotMatchRegularExpression('/[\x00-\x1f\x7f]/', $stored, 'control chars stripped');
+        }
+
+        public function testPingbackShieldOffIsInert(): void
+        {
+            $this->wireSettings($this->pingbackSettings(false));
+
+            $src = 'http://169.254.169.254/latest/meta-data/';
+            $out = WpNativeCapture::onPingbackSourceUri($src, 'http://blog.tld/?p=1');
+
+            $this->assertSame($src, $out, 'shield off must return the source UNCHANGED (native WP behaviour)');
+            $this->assertCount(0, $this->inner->rows, 'shield off records nothing');
+            $this->assertNull($this->agg('pingback'), 'shield off writes no pingback aggregate slot');
+        }
+
+        public function testPingbackCaptureFaultStillShortCircuits(): void
+        {
+            $throwing = new class implements HitLogWriter {
+                public function record(array $row)
+                {
+                    throw new \RuntimeException('boom');
+                }
+            };
+            $this->wireSettings($this->pingbackSettings(true), $throwing);
+
+            // Feature ON: even when capture throws, we MUST still short-circuit (never fetch).
+            $out = WpNativeCapture::onPingbackSourceUri('http://x.example/', 'http://blog.tld/?p=1');
+            $this->assertSame('', $out, 'a capture fault must not let WordPress fetch');
+        }
+
+        public function testPingbackSettingsUnresolvableIsInert(): void
+        {
+            $server = $this->server;
+            WpNativeCapture::$settingsProvider = static function () {
+                throw new \RuntimeException('settings unavailable');
+            };
+            WpNativeCapture::$serverProvider = static function () use (&$server) {
+                return $server;
+            };
+            WpNativeCapture::$depsProvider = function () {
+                return array('hitlog' => $this->inner, 'store' => $this->store);
+            };
+
+            $src = 'http://x.example/';
+            $out = WpNativeCapture::onPingbackSourceUri($src, 'http://blog.tld/?p=1');
+
+            $this->assertSame($src, $out, 'unconfirmed feature state must not change WordPress behaviour');
+            $this->assertCount(0, $this->inner->rows);
+        }
+
+        public function testPingbackFilterRegisteredAtPriorityOne(): void
+        {
+            $registered = array();
+            Functions\when('add_action')->justReturn(true);
+            Functions\when('add_filter')->alias(static function ($hook, $cb, $prio = 10, $args = 1) use (&$registered) {
+                $registered[$hook] = array('prio' => $prio, 'args' => $args);
+            });
+
+            WpNativeCapture::register();
+
+            $this->assertArrayHasKey('pingback_ping_source_uri', $registered);
+            $this->assertSame(1, $registered['pingback_ping_source_uri']['prio'], 'priority 1 captures raw private-IP targets before wp_http_validate_url');
+            $this->assertSame(2, $registered['pingback_ping_source_uri']['args'], 'arity 2 to receive source + target');
+        }
+
+        public function testPingbackSettingDefaultsOff(): void
+        {
+            $s = Settings::fromArray(array(), static function ($n) {
+                return null;
+            });
+            $this->assertFalse($s->pingbackShield());
+        }
+
+        public function testPingbackSettingRoundTripsThroughSanitizer(): void
+        {
+            $out = \Funnypot\WordPress\Admin\SettingsSanitizer::sanitize(array('wp_pingback_shield' => '1'));
+            $this->assertTrue($out['wp_pingback_shield']);
+
+            $off = \Funnypot\WordPress\Admin\SettingsSanitizer::sanitize(array());
+            $this->assertFalse($off['wp_pingback_shield'], 'an absent checkbox means off');
+        }
+
         // --- xmlrpc method -> reason mapping (fixed vocabulary; no arg/URL text ever stored) ------
 
         public function testXmlrpcMethodMapping(): void

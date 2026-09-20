@@ -124,6 +124,22 @@ that directory is not writable it falls back to `plugins_loaded` and raises an a
   with N sub-calls (N `xmlrpc_call` fires) writes at most one hit row — the burst is captured as the
   per-IP aggregate count (velocity), not as N rows. Every callback is degrade-safe: a capture fault
   never breaks WP login/xmlrpc/REST.
+- **XML-RPC pingback shield (`wp_pingback_shield`, off by default):** neutralizes the classic
+  `pingback.ping` SSRF / DDoS-reflection vector on a **real** WordPress site. It hooks WordPress's own
+  `pingback_ping_source_uri` filter at priority 1 (before WP's `wp_http_validate_url`), captures a
+  bounded, sanitized copy of the attacker-chosen **source URI** — the URL WordPress would fetch, i.e.
+  the SSRF/DDoS target — into a local `pingback` channel, then returns `''` so `pingback_ping()` faults
+  with its own canonical *"A valid URL was not provided."* error **before** `wp_safe_remote_get`. Two
+  independent no-fetch guarantees hold: **no HTTP/socket primitive exists anywhere on this path** (SSRF-
+  safe by construction), and returning `''` makes WordPress short-circuit before its own fetch — so the
+  operator's real site can never be coerced into an open pingback relay. Unlike WP-native capture this
+  **changes what `xmlrpc.php` returns for `pingback.ping`** (matching WordPress's own validation fault,
+  so it is not a tell), which is why it has a **dedicated opt-in toggle**. Off/unconfirmed ⇒ the filter
+  returns the source **unchanged** (native WP behaviour); on ⇒ it always short-circuits, even on a
+  capture fault. The captured URL is **local intel only** — never a durable-row column (no schema
+  change), never a report intent, never relayed to mainnet — stored as a bounded distinct sample
+  (≤ 8 URLs, each ≤ 255 chars, control chars stripped) in the per-IP aggregate slot, rollup-gated to one
+  durable row per IP per 60s window so a pingback flood cannot exhaust the table.
 - **Reputation (verdict-first):** `check_enabled` + `block_verdicts` (default `malicious`, `critical`)
   + optional `min_block_score`. Cache-first, fail-open, never a synchronous request-path call. Off by
   default; requires `MAINNET_KEY`.
@@ -149,7 +165,9 @@ Wordfence "Live Traffic" analog — the operator's reason to install). It render
 store and local state: summary tiles (total events, events in the last 24h, report-queue depth,
 blacklist-mirror age), a paginated recent-events table (time, IP, method, path, action, reason,
 status), top attacker IPs over the last 24h, and the `mass_plugin_scan` rollups. When WP-native
-capture is on, the login/xmlrpc/REST rows appear here too.
+capture is on, the login/xmlrpc/REST rows appear here too. When the pingback shield is on, a
+**"XML-RPC pingback SSRF targets (captured)"** table lists the captured source URIs per IP — every
+target is attacker-supplied and is escaped as text on output (never emitted raw or in an attribute).
 
 - `manage_options`-gated and **read-only**: it makes no state changes, so it carries no nonce (the
   guards are the capability gate + `absint`-clamped pagination). The recent-events list can be filtered

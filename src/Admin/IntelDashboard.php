@@ -194,6 +194,10 @@ final class IntelDashboard
         });
         $data['topIps'] = self::enrichTopIps($topIps, $store, $geo);
 
+        // Captured XML-RPC pingback SSRF targets (FP-0493), read from the same top-IP set. These are
+        // verbatim attacker-supplied URLs; renderView escapes every one as text.
+        $data['pingbackTargets'] = self::gatherPingbackTargets($topIps, $store);
+
         // mass_plugin_scan rollups.
         $data['rollups'] = self::guardRows(static function () use ($wpdb, $table, $arrayA) {
             return $wpdb->get_results(
@@ -222,6 +226,7 @@ final class IntelDashboard
                     'capture_agg:login:' . $ip,
                     'capture_agg:xmlrpc:' . $ip,
                     'capture_agg:rest:' . $ip,
+                    'capture_agg:pingback:' . $ip,
                     'enumscan_agg:' . $ip,
                 );
                 foreach ($keys as $key) {
@@ -253,6 +258,40 @@ final class IntelDashboard
                 'ua' => $ua,
                 'country' => is_string($country) ? $country : '',
                 'velocity' => $velocity,
+            );
+        }
+
+        return $out;
+    }
+
+    /**
+     * Collect captured pingback SSRF targets per top IP from the local `pingback` aggregate slot. The
+     * targets are verbatim attacker input (already bounded + control-char-stripped at capture); this
+     * gather only reads them — renderPingbackTargets escapes each one as text at output.
+     */
+    private static function gatherPingbackTargets(array $rows, $store)
+    {
+        $out = array();
+        if ($store === null) {
+            return $out;
+        }
+        foreach ($rows as $row) {
+            $ip = isset($row['ip']) ? (string) $row['ip'] : '';
+            if ($ip === '') {
+                continue;
+            }
+            $agg = self::slot($store, 'capture_agg:pingback:' . $ip);
+            if (!is_array($agg) || !isset($agg['targets']) || !is_array($agg['targets']) || $agg['targets'] === array()) {
+                continue;
+            }
+            $targets = array();
+            foreach ($agg['targets'] as $t) {
+                $targets[] = (string) $t;
+            }
+            $out[] = array(
+                'ip' => $ip,
+                'targets' => $targets,
+                'count' => isset($agg['count']) ? (int) $agg['count'] : 0,
             );
         }
 
@@ -316,6 +355,7 @@ final class IntelDashboard
             'byReason' => array(),
             'recent' => array(),
             'topIps' => array(),
+            'pingbackTargets' => array(),
             'rollups' => array(),
             'queueDepth' => null,
             'mirrorAgeSecs' => null,
@@ -377,6 +417,7 @@ final class IntelDashboard
         self::renderTiles($data);
         self::renderCounts($data);
         self::renderTopIps($data['topIps']);
+        self::renderPingbackTargets(isset($data['pingbackTargets']) ? $data['pingbackTargets'] : array());
         self::renderRollups($data['rollups']);
         self::renderRecent($data);
 
@@ -447,6 +488,44 @@ final class IntelDashboard
             echo '<td>' . ($velocity === null ? self::esc('—') : (int) $velocity) . '</td>';
             echo '<td>' . ($country === '' ? self::esc('—') : self::esc($country)) . '</td>';
             echo '<td>' . ($ua === '' ? self::esc('—') : self::esc($ua)) . '</td>';
+            echo '</tr>';
+        }
+        echo '</tbody></table>';
+    }
+
+    /**
+     * Captured XML-RPC pingback SSRF targets. Every target is attacker-supplied and is escaped here as
+     * text-node content (esc_html) — it is NEVER placed in an attribute or emitted raw. This is the
+     * single stored-XSS guard for the FP-0493 `targets` field.
+     */
+    private static function renderPingbackTargets(array $rows)
+    {
+        echo '<h2>XML-RPC pingback SSRF targets (captured)</h2>';
+        if ($rows === array()) {
+            echo '<p>' . self::esc('No events yet.') . '</p>';
+
+            return;
+        }
+        echo '<table class="widefat striped"><thead><tr>';
+        echo '<th>IP</th><th>Velocity (current 60s window)</th><th>Captured target URLs</th>';
+        echo '</tr></thead><tbody>';
+        foreach ($rows as $row) {
+            $ip = isset($row['ip']) ? (string) $row['ip'] : '';
+            $count = isset($row['count']) ? (int) $row['count'] : 0;
+            $targets = (isset($row['targets']) && is_array($row['targets'])) ? $row['targets'] : array();
+            echo '<tr>';
+            echo '<td>' . self::esc($ip) . '</td>';
+            echo '<td>' . (int) $count . '</td>';
+            echo '<td>';
+            $first = true;
+            foreach ($targets as $t) {
+                if (!$first) {
+                    echo '<br>';
+                }
+                echo '<code>' . self::esc((string) $t) . '</code>';
+                $first = false;
+            }
+            echo '</td>';
             echo '</tr>';
         }
         echo '</tbody></table>';
