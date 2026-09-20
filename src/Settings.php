@@ -201,6 +201,10 @@ final class Settings
         // WP-native attack capture (FP-0488): hook WP's own login/xmlrpc/REST pipelines into the local
         // hit store. Off by default (inert); local intel only, never changes what WordPress serves.
         $d['wp_native_capture'] = isset($r['wp_native_capture']) ? (bool) $r['wp_native_capture'] : false;
+        // XML-RPC pingback shield (FP-0493): capture the attacker-chosen pingback source URI (the SSRF
+        // target) and refuse it with WP's canonical fault WITHOUT fetching. Off by default (inert).
+        // Separate from wp_native_capture because this one CHANGES the served response.
+        $d['wp_pingback_shield'] = isset($r['wp_pingback_shield']) ? (bool) $r['wp_pingback_shield'] : false;
         $d['seed_salt'] = isset($r['seed_salt']) ? (string) $r['seed_salt'] : '';
         $d['latency_ms'] = self::clampInt(isset($r['latency_ms']) ? $r['latency_ms'] : 0, 0, 60000, 0);
         $d['latency_jitter_ms'] = self::clampInt(isset($r['latency_jitter_ms']) ? $r['latency_jitter_ms'] : 0, 0, 60000, 0);
@@ -506,6 +510,12 @@ final class Settings
     public function wpNativeCapture()
     {
         return $this->data['wp_native_capture'];
+    }
+
+    /** XML-RPC pingback SSRF shield: capture the source URI + refuse without fetching (FP-0493). */
+    public function pingbackShield()
+    {
+        return $this->data['wp_pingback_shield'];
     }
 
     public function seedSalt()

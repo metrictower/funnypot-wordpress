@@ -97,6 +97,10 @@ final class SettingsScreen
         self::checkbox($opt, 'wp_native_capture', 'Capture WP-native attacks (login / xmlrpc / REST)', $d['wp_native_capture']);
         self::help('Logs credential-stuffing, XML-RPC abuse and REST user-enumeration that WordPress handles itself. Local intel only — never sent to mainnet. Never changes what WordPress serves.');
 
+        echo '<tr><th colspan="2"><h2>XML-RPC pingback shield</h2></th></tr>';
+        self::checkbox($opt, 'wp_pingback_shield', 'Neutralize XML-RPC pingback SSRF (capture target + refuse)', $d['wp_pingback_shield']);
+        self::help('Captures the attacker-supplied pingback target URL as local intel and returns the standard XML-RPC error WITHOUT fetching it, so this site cannot be used as an SSRF/DDoS pingback relay. Local intel only — the URL is never sent to mainnet. Changes what xmlrpc.php returns for pingback.ping only.');
+
         echo '<tr><th colspan="2"><h2>Reputation (verdict-first)</h2></th></tr>';
         self::nestedCheckbox($opt, 'reputation', 'check_enabled', 'Enable reputation check', isset($d['check_enabled']) ? $d['check_enabled'] : false);
         self::select($opt . '[reputation]', 'fail_mode', 'Fail mode', $d['fail_mode'], array('open' => 'open (fail-open)', 'closed' => 'closed'));

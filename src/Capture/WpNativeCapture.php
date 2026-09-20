@@ -9,17 +9,24 @@ use Funnypot\WordPress\Settings;
 
 /**
  * Captures attacks that WordPress handles itself — credential stuffing (wp_login_failed), XML-RPC
- * abuse (xmlrpc_call), and REST auth-failure / user-enumeration — into the LOCAL hit store, so they
- * reach the operator dashboard even though they never pass through the Interceptor pipeline.
+ * abuse (xmlrpc_call), REST auth-failure / user-enumeration, and XML-RPC pingback SSRF targets
+ * (pingback_ping_source_uri) — into the LOCAL hit store, so they reach the operator dashboard even
+ * though they never pass through the Interceptor pipeline.
  *
- * Capture-only: the two filter callbacks return their incoming argument UNCHANGED, so login/xmlrpc/REST
- * behaviour is byte-identical whether capture is on or off. Local intel only — this path never builds a
- * ReportIntent and never calls the reporter, so nothing new is sent to mainnet.
+ * Two toggles, two behaviours. wp_native_capture drives the login/xmlrpc/REST callbacks, which are
+ * capture-only: they return their incoming argument UNCHANGED, so behaviour is byte-identical whether
+ * capture is on or off. wp_pingback_shield drives onPingbackSourceUri, which DOES change the served
+ * response: it returns '' so WordPress faults with its canonical error before its own fetch, closing
+ * the SSRF/DDoS-relay vector. Either way this path never builds a ReportIntent and never calls the
+ * reporter, so nothing new is sent to mainnet.
  *
  * Never logs a real credential: the password is never in scope (we hook wp_login_failed, not
  * authenticate, and it fires only on failure), and a real-account failure is anonymised via a
- * username_exists() self-guard. No submitted username/password/xmlrpc-arg/pingback-URL is ever
- * persisted — only IP, a fixed opaque reason, and a bounded User-Agent in the aggregate slot.
+ * username_exists() self-guard. No submitted username/password/xmlrpc-arg is ever persisted — only IP,
+ * a fixed opaque reason, and a bounded User-Agent in the aggregate slot. The one deliberate exception is
+ * the pingback source URI: it is attacker-chosen infrastructure (the SSRF/DDoS victim), not a
+ * credential, so a bounded, sanitized, length-capped copy is kept in the local `pingback` aggregate slot
+ * only — never a durable-row column, never relayed. Any renderer MUST HTML-escape it.
  *
  * Durable rows are rollup-gated per IP per channel per window (mirrors ScanAbsorbingHitLogWriter): the
  * first fire in the window writes one row, later fires in the window bump the aggregate slot only. So an
@@ -40,6 +47,9 @@ final class WpNativeCapture
     /** Distinct reason labels kept per aggregate slot (bounded memory). */
     const SAMPLE_CAP = 8;
 
+    /** Distinct pingback source URIs kept per aggregate slot (bounded memory), same bound as SAMPLE_CAP. */
+    const PINGBACK_TARGET_CAP = 8;
+
     // --- injectable seams (production defaults are wired by Plugin::wireProviders) ------------------
     /** @var callable():?Settings */
     public static $settingsProvider;
@@ -48,7 +58,7 @@ final class WpNativeCapture
     /** @var callable():array */
     public static $serverProvider;
 
-    /** Register the four WP-native hooks. Gating happens inside each callback at fire time. */
+    /** Register the WP-native hooks. Gating happens inside each callback at fire time. */
     public static function register()
     {
         if (function_exists('add_action')) {
@@ -60,6 +70,10 @@ final class WpNativeCapture
             // the capture. A wrong return here would break the REST API.
             add_filter('rest_authentication_errors', array(__CLASS__, 'onRestAuthErrors'), 99, 1);
             add_filter('rest_user_query', array(__CLASS__, 'onRestUserQuery'), 10, 2);
+            // Pingback shield (behaviour-changing, opt-in via wp_pingback_shield): priority 1 so we see
+            // the raw source URI before WP's own wp_http_validate_url (prio 10) would null a private/
+            // metadata target. Arity 2 to receive both source and target.
+            add_filter('pingback_ping_source_uri', array(__CLASS__, 'onPingbackSourceUri'), 1, 2);
         }
     }
 
@@ -132,6 +146,41 @@ final class WpNativeCapture
         }
 
         return $preparedArgs;
+    }
+
+    /**
+     * pingback_ping_source_uri (filter). The source URI ($args[0]) is the attacker-chosen URL WordPress
+     * would fetch to verify the pingback — i.e. the SSRF / DDoS-reflection target. We capture a bounded,
+     * sanitized copy as LOCAL intel and return '' so pingback_ping() faults with its canonical
+     * "A valid URL was not provided." error BEFORE its wp_safe_remote_get, meaning WordPress never
+     * fetches the URL and this site can never be coerced into an open pingback relay.
+     *
+     * We NEVER fetch the URL ourselves: no HTTP/socket primitive exists anywhere on this path. Two
+     * independent no-fetch guarantees hold — our path has no fetch code, and returning '' makes WordPress
+     * short-circuit before its own fetch.
+     *
+     * Inert unless the shield is enabled: feature off or unconfirmed returns the source UNCHANGED so
+     * WordPress behaves exactly as it would without the plugin. Once the feature is confirmed on we always
+     * return '' (short-circuit) — even if capture throws — because not-fetching is the safety property.
+     */
+    public static function onPingbackSourceUri($source, $target = '')
+    {
+        try {
+            $s = self::settings();
+        } catch (\Throwable $ignored) {
+            return $source; // cannot confirm the feature is on -> stay inert (native WP behaviour)
+        }
+        if ($s === null || !$s->enabled() || !$s->pingbackShield()) {
+            return $source; // feature off -> inert
+        }
+        // Feature ON: we WILL short-circuit so WordPress never fetches. Capture is best-effort.
+        try {
+            self::capturePingback($s, (string) $source);
+        } catch (\Throwable $ignored) {
+            // capture failed; still short-circuit below so no outbound fetch can happen
+        }
+
+        return ''; // empty source => canonical pingback_error(0, ...) BEFORE wp_safe_remote_get
     }
 
     // --- capture core (rollup-gated) -------------------------------------------------------------
@@ -207,6 +256,102 @@ final class WpNativeCapture
         }
 
         $store->backend()->set($key, $agg, self::AGG_TTL_SECS);
+    }
+
+    /**
+     * Record one pingback source URI (the SSRF target) into the local `pingback` channel: bump the
+     * per-IP counter, add the sanitized URI to the bounded distinct `targets` sample, and write a durable
+     * rollup row ONLY on the first fire in the window. The URL is never a durable-row column (no schema
+     * change) and never leaves the local store. Self-contained (independent of wp_native_capture).
+     */
+    private static function capturePingback(Settings $s, string $source)
+    {
+        $server = self::server();
+        $ip = RequestFactory::clientIp($server, $s);
+        if ($ip === '') {
+            return;
+        }
+
+        $deps = self::deps();
+        $hitlog = isset($deps['hitlog']) ? $deps['hitlog'] : null;
+        $store = isset($deps['store']) ? $deps['store'] : null;
+        if ($hitlog === null || $store === null) {
+            return; // no persistence available -> degrade to no-op (still short-circuits in the caller)
+        }
+
+        $ua = isset($server['HTTP_USER_AGENT']) ? substr((string) $server['HTTP_USER_AGENT'], 0, 255) : '';
+        $method = isset($server['REQUEST_METHOD']) ? (string) $server['REQUEST_METHOD'] : '';
+        $sample = self::sanitizeUrlSample($source);
+
+        $n = $store->incr('capture:pingback:' . $ip, self::WINDOW_SECS);
+        self::bumpPingbackAggregate($store, $ip, $ua, $sample, $n);
+
+        if ($n === 1) {
+            // One durable row per IP per window; later fires bump the aggregate (velocity + more targets)
+            // only, so a pingback flood cannot exhaust the hit table.
+            $hitlog->record(array(
+                'ts' => time(),
+                'ip' => $ip,
+                'method' => $method,
+                'path' => '/xmlrpc.php',
+                'action' => 'log',
+                'reason' => 'xmlrpc_pingback_target',
+                'status' => 0,
+            ));
+        }
+    }
+
+    /**
+     * Per-IP pingback aggregate slot (local intel only — never relayed to mainnet). Holds the bounded
+     * distinct `targets` sample of captured source URIs, kept confined to this channel so the
+     * login/xmlrpc/rest slots never carry a URL.
+     */
+    private static function bumpPingbackAggregate($store, $ip, $ua, $sample, $n)
+    {
+        $key = 'capture_agg:pingback:' . $ip;
+        $agg = $store->backend()->get($key);
+        if (!is_array($agg)) {
+            $agg = array(
+                'count' => 0,
+                'first_ts' => time(),
+                'ua' => '',
+                'targets' => array(),
+            );
+        }
+        if (!isset($agg['targets']) || !is_array($agg['targets'])) {
+            $agg['targets'] = array();
+        }
+
+        $agg['count'] = (int) $n;
+        if ($ua !== '') {
+            $agg['ua'] = substr($ua, 0, 255);
+        }
+        if ($sample !== ''
+            && count($agg['targets']) < self::PINGBACK_TARGET_CAP
+            && !in_array($sample, $agg['targets'], true)) {
+            $agg['targets'][] = $sample;
+        }
+
+        $store->backend()->set($key, $agg, self::AGG_TTL_SECS);
+    }
+
+    /**
+     * Bound + de-fang a captured source URI: strip control characters/newlines and cap at 255 chars.
+     * Stored verbatim otherwise (not urldecoded/normalised — the raw attacker string is the intel). It is
+     * local-only and MUST be HTML-escaped by any renderer; this method emits it nowhere.
+     */
+    private static function sanitizeUrlSample(string $raw): string
+    {
+        $clean = preg_replace('/[\x00-\x1f\x7f]/', '', $raw);
+        if (!is_string($clean)) {
+            return ''; // fail-safe: never let raw bytes through on a preg fault
+        }
+        $clean = trim($clean);
+        if (strlen($clean) > 255) {
+            $clean = substr($clean, 0, 255);
+        }
+
+        return $clean;
     }
 
     /** Map the (fixed-vocabulary) XML-RPC method name to an opaque reason label. Never attacker free-text. */
