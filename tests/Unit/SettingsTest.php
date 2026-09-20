@@ -137,6 +137,25 @@ final class SettingsTest extends TestCase
         $this->assertSame(100, Settings::fromArray(array('queue_cap' => 1), $this->noConsts())->queueCap());
     }
 
+    public function testEnumAbsorberKnobDefaultsAndClamps(): void
+    {
+        $s = Settings::fromArray(array(), $this->noConsts());
+        $this->assertTrue($s->pluginEnumAbsorber()); // on by default
+        $this->assertSame(60, $s->enumWindowSecs());
+        $this->assertSame(5, $s->enumEscalateThreshold());
+        $this->assertFalse($s->enumAutoBan()); // opt-in
+        $this->assertSame(3600, $s->enumBanTtlSecs());
+
+        $off = Settings::fromArray(array('plugin_enum_absorber' => false), $this->noConsts());
+        $this->assertFalse($off->pluginEnumAbsorber());
+
+        // Clamp out of range.
+        $this->assertSame(3600, Settings::fromArray(array('enum_window_secs' => 999999), $this->noConsts())->enumWindowSecs());
+        $this->assertSame(5, Settings::fromArray(array('enum_window_secs' => 1), $this->noConsts())->enumWindowSecs());
+        $this->assertSame(1000, Settings::fromArray(array('enum_escalate_threshold' => 999999), $this->noConsts())->enumEscalateThreshold());
+        $this->assertSame(86400, Settings::fromArray(array('enum_ban_ttl_secs' => 999999), $this->noConsts())->enumBanTtlSecs());
+    }
+
     public function testCountryKnobDefaultsAndEnums(): void
     {
         $s = Settings::fromArray(array(), $this->noConsts());

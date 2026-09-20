@@ -62,6 +62,13 @@ final class SettingsScreen
         self::checkbox($opt, 'attack_emulation', 'Attack-class emulation', $d['attack_emulation']);
         self::checkbox($opt, 'nuclei_reflection', 'Nuclei reflection', $d['nuclei_reflection']);
 
+        echo '<tr><th colspan="2"><h2>Plugin/theme enumeration absorber</h2></th></tr>';
+        self::checkbox($opt, 'plugin_enum_absorber', 'Absorb plugin/theme enumeration sweeps', $d['plugin_enum_absorber']);
+        self::text($opt, 'enum_window_secs', 'Absorber window (seconds)', $d['enum_window_secs']);
+        self::text($opt, 'enum_escalate_threshold', 'Escalate after N probes / window', $d['enum_escalate_threshold']);
+        self::checkbox($opt, 'enum_auto_ban', 'Auto-ban on escalation (a stronger action — opt-in)', $d['enum_auto_ban']);
+        self::text($opt, 'enum_ban_ttl_secs', 'Auto-ban TTL (seconds)', $d['enum_ban_ttl_secs']);
+
         echo '<tr><th colspan="2"><h2>Reputation (verdict-first)</h2></th></tr>';
         self::nestedCheckbox($opt, 'reputation', 'check_enabled', 'Enable reputation check', isset($d['check_enabled']) ? $d['check_enabled'] : false);
         self::select($opt . '[reputation]', 'fail_mode', 'Fail mode', $d['fail_mode'], array('open' => 'open (fail-open)', 'closed' => 'closed'));

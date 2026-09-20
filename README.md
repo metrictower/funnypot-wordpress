@@ -58,6 +58,18 @@ that directory is not writable it falls back to `plugins_loaded` and raises an a
 - **Posture:** `honeypot` (FALLBACK — upgrade a genuine 404, FP-free), `WAF` (BEFORE — block/deceive
   ahead of routing), or `both`.
 - **Response style / severity ceiling / attack emulation / nuclei reflection** — how a fake looks.
+- **Plugin/theme enumeration absorber (on by default):** a real site runs ~10-30 plugins, so a
+  request for `/wp-content/plugins/<slug>/readme.txt` (or a theme `style.css`) whose slug is **not
+  installed** is an unambiguous enumeration probe. When on, `WpSiteProfile` consults the installed set
+  (from `get_plugins()`/`wp_get_themes()`, cached in a transient and refreshed on
+  (de)activation / theme switch / upgrade — never called on the request path) so an uninstalled-slug
+  probe becomes sacrificial and the policy engine deceives + reports it; an installed slug stays a real
+  route. A nuclei-wordfence sweep is 80k+ requests, so the burst is **absorbed**: per source, a 60s
+  window collapses to one local `mass_plugin_scan` rollup row (with a probed-slug count + sample), not
+  one row per probe. `enum_escalate_threshold` sets the per-window escalation point; `enum_auto_ban`
+  (off by default) blocks a source past it for `enum_ban_ttl_secs`. Fail-safe: a cold/unwarmed installed
+  set reverts to the historical blanket behavior, so a genuine installed asset is never flagged. Turn
+  the absorber off to restore blanket `/wp-content/plugins|themes/` handling.
 - **Reputation (verdict-first):** `check_enabled` + `block_verdicts` (default `malicious`, `critical`)
   + optional `min_block_score`. Cache-first, fail-open, never a synchronous request-path call. Off by
   default; requires `MAINNET_KEY`.

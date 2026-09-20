@@ -39,6 +39,8 @@ final class Interceptor
     public static $storeProvider;
     /** @var array{xmlrpc:bool,wp_login:bool} decoy opt-ins for WpSiteProfile */
     public static $decoys = array('xmlrpc' => false, 'wp_login' => false);
+    /** @var callable():?array installed-set oracle for WpSiteProfile; null => blanket behavior */
+    public static $installedSetProvider;
 
     /** BEFORE position: hooked at priority 0 on muplugins_loaded (+ plugins_loaded fallback). */
     public static function runBefore()
@@ -119,7 +121,8 @@ final class Interceptor
             $evidence = RequestFactory::evidence($server, $rawBody, $s);
 
             $is404 = ($position === 'fallback') ? true : null; // BEFORE: the main query has not run
-            $wpProfile = new WpSiteProfile($is404, self::$decoys['xmlrpc'], self::$decoys['wp_login']);
+            $installedSet = self::installedSet();
+            $wpProfile = new WpSiteProfile($is404, self::$decoys['xmlrpc'], self::$decoys['wp_login'], $installedSet);
             $profile = $wpProfile->toPolicyProfile($evidence->path());
 
             $ctx = CoreEvaluator::contextFromEvidence($evidence);
@@ -199,6 +202,20 @@ final class Interceptor
         }
 
         return '';
+    }
+
+    private static function installedSet()
+    {
+        if (!is_callable(self::$installedSetProvider)) {
+            return null;
+        }
+        try {
+            $set = call_user_func(self::$installedSetProvider);
+            return is_array($set) ? $set : null;
+        } catch (\Throwable $ignored) {
+            // A provider fault reverts to the blanket oracle (fail-safe), not a broken interception.
+            return null;
+        }
     }
 
     private static function store($s, $clock)

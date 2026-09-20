@@ -65,18 +65,46 @@ final class WpSiteProfile
     private $xmlrpcDecoy;
     /** @var bool wp-login decoy opted in AND real feature disabled */
     private $wpLoginDecoy;
+    /** @var array installed plugin slugs (lower-cased); consulted only when knownInstalled */
+    private $installedPlugins;
+    /** @var array installed theme slugs (lower-cased); consulted only when knownInstalled */
+    private $installedThemes;
+    /** @var bool do we actually know the installed set? false => fail-safe blanket behavior */
+    private $knownInstalled;
+
+    /** Blanket reserved prefixes that are narrowed by the installed-set oracle when it is known. */
+    private static $extensionPrefixes = array(
+        '/wp-content/plugins/' => 'plugin',
+        '/wp-content/themes/' => 'theme',
+    );
 
     /**
      * @param bool|callable|null $is404        FALLBACK: the resolved is_404() (bool or fn():bool);
      *                                         BEFORE: null (only the static reserved set is known)
      * @param bool               $xmlrpcDecoy  xmlrpc.php becomes sacrificial only when true
      * @param bool               $wpLoginDecoy wp-login.php becomes sacrificial only when true
+     * @param array|null         $installedSet {plugins:string[], themes:string[], known:bool} — the
+     *                                          installed-set oracle. null/absent (the default) keeps the
+     *                                          historical blanket behavior so existing callers are valid.
      */
-    public function __construct($is404 = null, $xmlrpcDecoy = false, $wpLoginDecoy = false)
+    public function __construct($is404 = null, $xmlrpcDecoy = false, $wpLoginDecoy = false, $installedSet = null)
     {
         $this->is404 = $is404;
         $this->xmlrpcDecoy = (bool) $xmlrpcDecoy;
         $this->wpLoginDecoy = (bool) $wpLoginDecoy;
+
+        $this->installedPlugins = array();
+        $this->installedThemes = array();
+        $this->knownInstalled = false;
+        if (is_array($installedSet)) {
+            $this->knownInstalled = !empty($installedSet['known']);
+            if (isset($installedSet['plugins']) && is_array($installedSet['plugins'])) {
+                $this->installedPlugins = array_map('strtolower', array_map('strval', $installedSet['plugins']));
+            }
+            if (isset($installedSet['themes']) && is_array($installedSet['themes'])) {
+                $this->installedThemes = array_map('strtolower', array_map('strval', $installedSet['themes']));
+            }
+        }
     }
 
     public function stack()
@@ -98,6 +126,14 @@ final class WpSiteProfile
         if (in_array($p, self::$reservedExact, true)) {
             return true;
         }
+
+        // Narrow the blanket plugins/themes prefixes: an uninstalled slug is NOT a real route. Only
+        // when the installed set is known — a cold/faulted set falls through to the blanket rule below.
+        $probe = self::extensionProbe($p);
+        if ($probe !== null && $this->knownInstalled) {
+            return $this->slugInstalled($probe);
+        }
+
         foreach (self::$reservedPrefixes as $prefix) {
             // Match a path beneath the prefix, or the bare directory itself (trailing slash stripped).
             if (strpos($p, $prefix) === 0 || $p === rtrim($prefix, '/')) {
@@ -125,7 +161,48 @@ final class WpSiteProfile
             return $this->wpLoginDecoy;
         }
 
+        // An uninstalled plugin/theme slug is a genuine enumeration probe -> sacrificial. Fail-safe:
+        // never sacrificial when the installed set is unknown (blanket behavior preserved).
+        $probe = self::extensionProbe($p);
+        if ($probe !== null && $this->knownInstalled) {
+            return $this->slugInstalled($probe) === false;
+        }
+
         return in_array($p, self::$sacrificial, true);
+    }
+
+    /**
+     * Extract the plugin/theme kind + slug from a normalized path under an extension prefix.
+     *
+     * @param string $p a normalized path (lower-case, no trailing slash)
+     * @return array{kind:string,slug:string}|null null for a non-extension path, the bare prefix dir, or
+     *                                              an odd/traversal segment (treated as blanket, fail-safe)
+     */
+    private static function extensionProbe(string $p)
+    {
+        foreach (self::$extensionPrefixes as $prefix => $kind) {
+            if (strpos($p, $prefix) !== 0) {
+                continue;
+            }
+            $rest = substr($p, strlen($prefix));
+            $slash = strpos($rest, '/');
+            $slug = $slash === false ? $rest : substr($rest, 0, $slash);
+            if ($slug === '' || strpos($slug, '..') !== false || !preg_match('/^[a-z0-9][a-z0-9._-]*$/', $slug)) {
+                return null;
+            }
+
+            return array('kind' => $kind, 'slug' => $slug);
+        }
+
+        return null;
+    }
+
+    /** Is the probe's slug in the corresponding installed set? */
+    private function slugInstalled(array $probe)
+    {
+        $set = $probe['kind'] === 'plugin' ? $this->installedPlugins : $this->installedThemes;
+
+        return in_array($probe['slug'], $set, true);
     }
 
     /**

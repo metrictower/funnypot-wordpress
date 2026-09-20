@@ -143,6 +143,15 @@ final class Settings
         $d['attack_emulation'] = isset($r['attack_emulation']) ? (bool) $r['attack_emulation'] : false;
         $d['nuclei_reflection'] = isset($r['nuclei_reflection']) ? (bool) $r['nuclei_reflection'] : true;
         $d['catalog_disabled'] = self::strList(isset($r['catalog_disabled']) ? $r['catalog_disabled'] : array());
+
+        // Plugin/theme enumeration absorber (FP-0395). On by default when a posture is enabled; off
+        // reverts WpSiteProfile to blanket prefixes and drops the hit-log absorber decorator.
+        $d['plugin_enum_absorber'] = isset($r['plugin_enum_absorber']) ? (bool) $r['plugin_enum_absorber'] : true;
+        $d['enum_window_secs'] = self::clampInt(isset($r['enum_window_secs']) ? $r['enum_window_secs'] : 60, 5, 3600, 60);
+        $d['enum_escalate_threshold'] = self::clampInt(isset($r['enum_escalate_threshold']) ? $r['enum_escalate_threshold'] : 5, 1, 1000, 5);
+        // Auto-ban on escalation is a stronger, potentially-FP action -> off by default (opt-in).
+        $d['enum_auto_ban'] = isset($r['enum_auto_ban']) ? (bool) $r['enum_auto_ban'] : false;
+        $d['enum_ban_ttl_secs'] = self::clampInt(isset($r['enum_ban_ttl_secs']) ? $r['enum_ban_ttl_secs'] : 3600, 60, 86400, 3600);
         $d['seed_salt'] = isset($r['seed_salt']) ? (string) $r['seed_salt'] : '';
         $d['latency_ms'] = self::clampInt(isset($r['latency_ms']) ? $r['latency_ms'] : 0, 0, 60000, 0);
         $d['latency_jitter_ms'] = self::clampInt(isset($r['latency_jitter_ms']) ? $r['latency_jitter_ms'] : 0, 0, 60000, 0);
@@ -316,6 +325,33 @@ final class Settings
     public function catalogDisabled()
     {
         return $this->data['catalog_disabled'];
+    }
+
+    // --- plugin/theme enumeration absorber (FP-0395) ---
+
+    public function pluginEnumAbsorber()
+    {
+        return $this->data['plugin_enum_absorber'];
+    }
+
+    public function enumWindowSecs()
+    {
+        return $this->data['enum_window_secs'];
+    }
+
+    public function enumEscalateThreshold()
+    {
+        return $this->data['enum_escalate_threshold'];
+    }
+
+    public function enumAutoBan()
+    {
+        return $this->data['enum_auto_ban'];
+    }
+
+    public function enumBanTtlSecs()
+    {
+        return $this->data['enum_ban_ttl_secs'];
     }
 
     public function seedSalt()

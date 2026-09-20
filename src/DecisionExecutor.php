@@ -109,6 +109,8 @@ final class DecisionExecutor
                 'action' => $d->action(),
                 'reason' => $d->reason(),
                 'status' => $d->status() !== null ? $d->status() : 0,
+                // Carried for the scan absorber's local rollup; the persisting writer ignores it.
+                'ua' => (string) $e->header('user-agent'),
             ));
         } catch (\Throwable $ignored) {
             // a hit-log fault must never affect the response

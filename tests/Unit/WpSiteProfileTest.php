@@ -88,6 +88,55 @@ final class WpSiteProfileTest extends TestCase
         $this->assertTrue($p->routeExists('/wp-json/'));
     }
 
+    public function testInstalledSlugStaysRealRouteNotSacrificial(): void
+    {
+        $set = array('plugins' => array('akismet'), 'themes' => array('twentytwentyfour'), 'known' => true);
+        $p = new WpSiteProfile(null, false, false, $set);
+
+        $this->assertTrue($p->routeExists('/wp-content/plugins/akismet/readme.txt'));
+        $this->assertFalse($p->isSacrificialPath('/wp-content/plugins/akismet/readme.txt'));
+        $this->assertTrue($p->routeExists('/wp-content/themes/twentytwentyfour/style.css'));
+        $this->assertFalse($p->isSacrificialPath('/wp-content/themes/twentytwentyfour/style.css'));
+    }
+
+    public function testUninstalledSlugIsEnumerationProbe(): void
+    {
+        $set = array('plugins' => array('akismet'), 'themes' => array('twentytwentyfour'), 'known' => true);
+        $p = new WpSiteProfile(null, false, false, $set);
+
+        $this->assertFalse($p->routeExists('/wp-content/plugins/tutor/readme.txt'));
+        $this->assertTrue($p->isSacrificialPath('/wp-content/plugins/tutor/readme.txt'));
+        // Any path under an uninstalled slug is not a real route (the plugin genuinely does not exist).
+        $this->assertFalse($p->routeExists('/wp-content/plugins/tutor/assets/x.js'));
+        $this->assertTrue($p->isSacrificialPath('/wp-content/plugins/tutor/assets/x.js'));
+        $this->assertTrue($p->isSacrificialPath('/wp-content/themes/some-theme/style.css'));
+    }
+
+    public function testColdInstalledSetFailsSafeToBlanketBehavior(): void
+    {
+        // known=false => we do not know our own routes -> exact historical blanket behavior.
+        $cold = new WpSiteProfile(null, false, false, array('plugins' => array(), 'themes' => array(), 'known' => false));
+        $this->assertTrue($cold->routeExists('/wp-content/plugins/tutor/readme.txt'));
+        $this->assertFalse($cold->isSacrificialPath('/wp-content/plugins/tutor/readme.txt'));
+
+        // No installed set at all (default ctor) is likewise blanket.
+        $none = new WpSiteProfile();
+        $this->assertTrue($none->routeExists('/wp-content/plugins/tutor/readme.txt'));
+        $this->assertFalse($none->isSacrificialPath('/wp-content/plugins/tutor/readme.txt'));
+    }
+
+    public function testBareExtensionDirAndUploadsStayRealWithKnownSet(): void
+    {
+        $set = array('plugins' => array('akismet'), 'themes' => array(), 'known' => true);
+        $p = new WpSiteProfile(null, false, false, $set);
+
+        // The bare directory listing surface is not slug-scoped -> still a real route.
+        $this->assertTrue($p->routeExists('/wp-content/plugins/'));
+        $this->assertTrue($p->routeExists('/wp-content/themes/'));
+        // Uploads are untouched by the narrowing.
+        $this->assertTrue($p->routeExists('/wp-content/uploads/2026/08/a.png'));
+    }
+
     public function testToPolicyProfileProjectsExactPath(): void
     {
         $p = new WpSiteProfile();

@@ -8,6 +8,7 @@ use Funnypot\WordPress\Admin\Notices;
 use Funnypot\WordPress\Admin\SettingsScreen;
 use Funnypot\WordPress\Cli\HoneypotCommand;
 use Funnypot\WordPress\Geo\GeoIpRefresh;
+use Funnypot\WordPress\Log\ScanAbsorbingHitLogWriter;
 use Funnypot\WordPress\Log\WpdbHitLogWriter;
 use Funnypot\WordPress\Mirror\BlacklistMirror;
 use Funnypot\WordPress\Report\WpdbReportQueue;
@@ -48,6 +49,14 @@ final class Plugin
         add_action('admin_menu', array(SettingsScreen::class, 'register'));
         add_action('admin_init', array(SettingsScreen::class, 'registerSetting'));
         add_action('admin_notices', array(__CLASS__, 'renderNotices'));
+
+        // Installed-set oracle (FP-0395): populate the transient out-of-band so the request path only
+        // ever reads it. Invalidate whenever the installed set can change.
+        add_action('admin_init', array(__CLASS__, 'warmInstalledSet'));
+        add_action('activated_plugin', array(__CLASS__, 'refreshInstalledSet'));
+        add_action('deactivated_plugin', array(__CLASS__, 'refreshInstalledSet'));
+        add_action('switch_theme', array(__CLASS__, 'refreshInstalledSet'));
+        add_action('upgrader_process_complete', array(__CLASS__, 'refreshInstalledSet'));
 
         register_activation_hook(self::$file, array(__CLASS__, 'activate'));
         register_deactivation_hook(self::$file, array(__CLASS__, 'deactivate'));
@@ -93,6 +102,23 @@ final class Plugin
             return function_exists('current_action') ? (string) current_action() : '';
         };
         Interceptor::$executorProvider = array(__CLASS__, 'executor');
+        Interceptor::$installedSetProvider = array(__CLASS__, 'installedSetData');
+    }
+
+    /**
+     * The installed-set projection for WpSiteProfile — a transient read only (never get_plugins on the
+     * request path). Returns null when the absorber is off, which keeps the blanket real-route oracle.
+     *
+     * @return array|null
+     */
+    public static function installedSetData()
+    {
+        $s = self::settings();
+        if (!$s->pluginEnumAbsorber()) {
+            return null;
+        }
+
+        return self::installedSet()->data();
     }
 
     /** Build the current Settings from the stored option (env constants win via the default resolver). */
@@ -110,7 +136,102 @@ final class Plugin
         $log = isset($services['hitlog']) ? $services['hitlog'] : null;
         $reporter = isset($services['reporter']) ? $services['reporter'] : null;
 
+        // Wrap the hit log so an enumeration sweep collapses to one rollup row per source per window.
+        $store = isset($services['store']) ? $services['store'] : null;
+        if ($log !== null && $store !== null && $s->pluginEnumAbsorber()) {
+            $log = new ScanAbsorbingHitLogWriter(
+                $log,
+                $store,
+                $s->enumWindowSecs(),
+                $s->enumEscalateThreshold(),
+                $s->enumAutoBan(),
+                $s->enumBanTtlSecs()
+            );
+        }
+
         return new DecisionExecutor(null, null, null, $log, $reporter);
+    }
+
+    // --- installed-set oracle (FP-0395) ----------------------------------------------------------
+
+    /**
+     * The WpInstalledSet wired to WP primitives. The list callables (get_plugins/wp_get_themes, with the
+     * wp-admin include) run ONLY inside refresh() from an admin/cron/activation context — never on the
+     * request path, where only the transient getters are touched.
+     */
+    private static function installedSet()
+    {
+        return new WpInstalledSet(
+            static function ($key) {
+                return function_exists('get_transient') ? get_transient($key) : false;
+            },
+            static function ($key, $value, $ttl) {
+                if (function_exists('set_transient')) {
+                    set_transient($key, $value, $ttl);
+                }
+            },
+            array(__CLASS__, 'listInstalledPluginSlugs'),
+            array(__CLASS__, 'listInstalledThemeSlugs')
+        );
+    }
+
+    /** Repopulate the installed-set transient (invalidation hooks + activation). Guarded — never fatal. */
+    public static function refreshInstalledSet()
+    {
+        try {
+            self::installedSet()->refresh();
+        } catch (\Throwable $ignored) {
+            // an installed-set refresh fault must never affect admin
+        }
+    }
+
+    /** First-warm on admin_init when the transient is cold, so a fresh site becomes active without a hook. */
+    public static function warmInstalledSet()
+    {
+        try {
+            $set = self::installedSet();
+            if (!$set->isKnown()) {
+                $set->refresh();
+            }
+        } catch (\Throwable $ignored) {
+            // best-effort warm; a cold set stays fail-safe (blanket behavior)
+        }
+    }
+
+    /** Installed plugin slugs; loads the wp-admin include here (the caller), not on the request path. */
+    public static function listInstalledPluginSlugs()
+    {
+        if (!function_exists('get_plugins') && defined('ABSPATH')) {
+            $inc = ABSPATH . 'wp-admin/includes/plugin.php';
+            if (is_readable($inc)) {
+                require_once $inc;
+            }
+        }
+        if (!function_exists('get_plugins')) {
+            return array();
+        }
+        $slugs = array();
+        foreach (get_plugins() as $file => $data) {
+            $slug = dirname((string) $file);
+            if ($slug === '.' || $slug === '') {
+                $slug = basename((string) $file, '.php'); // single-file plugin (e.g. hello.php)
+            }
+            if ($slug !== '') {
+                $slugs[] = $slug;
+            }
+        }
+
+        return $slugs;
+    }
+
+    /** Installed theme slugs — wp_get_themes() is keyed by the stylesheet directory (the slug). */
+    public static function listInstalledThemeSlugs()
+    {
+        if (!function_exists('wp_get_themes')) {
+            return array();
+        }
+
+        return array_map('strval', array_keys(wp_get_themes()));
     }
 
     /**
@@ -194,6 +315,7 @@ final class Plugin
         if (function_exists('wp_schedule_event')) {
             self::scheduleEvents();
         }
+        self::refreshInstalledSet(); // first-populate so the oracle is warm from activation onward
     }
 
     public static function deactivate()
