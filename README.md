@@ -57,7 +57,25 @@ that directory is not writable it falls back to `plugins_loaded` and raises an a
 
 - **Posture:** `honeypot` (FALLBACK — upgrade a genuine 404, FP-free), `WAF` (BEFORE — block/deceive
   ahead of routing), or `both`.
-- **Response style / severity ceiling / attack emulation / nuclei reflection** — how a fake looks.
+- **Response mode** — the primary behaviour selector, composed in the plugin from two engine seams:
+  - `stealth` — capture-only. The hit is logged + reported, then WordPress serves its own **plain 404
+    on every band** (every non-`allow` action band is clamped to `log`, decoys are forced off). No
+    decoy, no 403 — the lowest fingerprint, pure intel.
+  - `realistic` (default) — byte-exact core template fakes, versioned decoys, and the authed wp-admin
+    skin when armed. Reproduces the plugin's prior default behaviour exactly.
+  - `taunt` — the troll "nice try" persona layered over the same decoy; still only ever **upgrades a
+    404** (any engine fault degrades to a plain 404, never a 5xx).
+
+  The old `response_style` field is folded into `response_mode`: on upgrade an install with no saved
+  mode derives it from its legacy style (`taunt`→`taunt`, `realistic`/`minimal`→`realistic`). A legacy
+  `minimal` install therefore moves to `realistic`, which serves richer fake bodies than core's terse
+  `minimal` tokens — intentional, since core `minimal` still emits a matcher-satisfying fake and is not
+  the capture-only stealth mode.
+- **Decoys** — `decoy_xmlrpc` and `decoy_wp_login` (both off by default) toggle the xmlrpc and wp-login
+  decoys; `decoy_session_key` (a per-deploy secret) arms the wp-login mock-auth authed dashboard. All
+  are forced off in stealth mode.
+- **Advanced: real-route actions / severity ceiling / attack emulation / nuclei reflection** — how a
+  fake looks and which per-band action (`allow`/`log`/`block`/`deceive`) runs within realistic/taunt.
 - **Plugin/theme enumeration absorber (on by default):** a real site runs ~10-30 plugins, so a
   request for `/wp-content/plugins/<slug>/readme.txt` (or a theme `style.css`) whose slug is **not
   installed** is an unambiguous enumeration probe. When on, `WpSiteProfile` consults the installed set

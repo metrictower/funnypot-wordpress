@@ -103,6 +103,8 @@ final class Plugin
         };
         Interceptor::$executorProvider = array(__CLASS__, 'executor');
         Interceptor::$installedSetProvider = array(__CLASS__, 'installedSetData');
+        // Wire the decoy opt-ins from Settings (stealth forces them off inside decoyMap()).
+        Interceptor::$decoys = self::settings()->decoyMap();
     }
 
     /**

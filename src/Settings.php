@@ -135,6 +135,29 @@ final class Settings
             array('minimal', 'realistic', 'taunt'),
             'realistic'
         );
+
+        // Operator-facing response mode — the primary control. It composes the served behaviour from
+        // two existing seams: the per-band actions clamp (stealth => capture-only plain 404) and the
+        // core responseStyle (realistic|taunt). An explicit response_mode wins; when it is absent but a
+        // legacy response_style is stored, derive the mode so an upgraded install keeps its persona
+        // (taunt stays taunt) instead of reverting to realistic.
+        if (isset($r['response_mode'])) {
+            $d['response_mode'] = self::whitelist(
+                (string) $r['response_mode'],
+                array('stealth', 'realistic', 'taunt'),
+                'realistic'
+            );
+        } elseif (isset($r['response_style'])) {
+            $d['response_mode'] = ((string) $r['response_style'] === 'taunt') ? 'taunt' : 'realistic';
+        } else {
+            $d['response_mode'] = 'realistic';
+        }
+
+        // Decoy opt-ins (dead-off by default). decoy_session_key arms the wp-login authed skin; empty
+        // leaves it disarmed. All are forced inert in stealth (see decoyMap()/coreResponseStyle()).
+        $d['decoy_xmlrpc'] = isset($r['decoy_xmlrpc']) ? (bool) $r['decoy_xmlrpc'] : false;
+        $d['decoy_wp_login'] = isset($r['decoy_wp_login']) ? (bool) $r['decoy_wp_login'] : false;
+        $d['decoy_session_key'] = isset($r['decoy_session_key']) ? (string) $r['decoy_session_key'] : '';
         $d['severity_ceiling'] = self::whitelist(
             isset($r['severity_ceiling']) ? (string) $r['severity_ceiling'] : 'high',
             array('low', 'medium', 'high', 'critical'),
@@ -305,6 +328,64 @@ final class Settings
     public function responseStyle()
     {
         return $this->data['response_style'];
+    }
+
+    // --- response mode + decoys ---
+
+    public function responseMode()
+    {
+        return $this->data['response_mode'];
+    }
+
+    /** Realistic and taunt serve decoys; stealth never does. */
+    public function responseModeServesDecoys()
+    {
+        return $this->data['response_mode'] !== 'stealth';
+    }
+
+    /** Core Config responseStyle for the current mode (stealth => minimal, but never synthesised). */
+    public function coreResponseStyle()
+    {
+        $mode = $this->data['response_mode'];
+        if ($mode === 'taunt') {
+            return 'taunt';
+        }
+        if ($mode === 'stealth') {
+            return 'minimal';
+        }
+
+        return 'realistic';
+    }
+
+    public function decoyXmlrpc()
+    {
+        return $this->data['decoy_xmlrpc'];
+    }
+
+    public function decoyWpLogin()
+    {
+        return $this->data['decoy_wp_login'];
+    }
+
+    public function decoySessionKey()
+    {
+        return $this->data['decoy_session_key'];
+    }
+
+    /**
+     * The Interceptor::$decoys seam values, with stealth forcing every decoy off (belt-and-braces with
+     * the toPolicyConfig() clamp). Realistic/taunt mirror the individual toggles.
+     *
+     * @return array{xmlrpc:bool,wp_login:bool}
+     */
+    public function decoyMap()
+    {
+        $serves = $this->responseModeServesDecoys();
+
+        return array(
+            'xmlrpc' => $this->data['decoy_xmlrpc'] && $serves,
+            'wp_login' => $this->data['decoy_wp_login'] && $serves,
+        );
     }
 
     public function severityCeiling()
@@ -483,6 +564,18 @@ final class Settings
     {
         $before = ($position === PolicyConfig::POSITION_BEFORE);
 
+        // Stealth is capture-only: clamp EVERY non-allow band to log so the DecisionExecutor's
+        // band-agnostic LOG path returns to WP's plain 404 on every band — no 403 tell (default
+        // attack_class is block), no decoy (deceive). allow stays intact so clean traffic proceeds.
+        $actions = $this->data['actions'];
+        if ($this->data['response_mode'] === 'stealth') {
+            foreach ($actions as $band => $action) {
+                if ($action !== 'allow') {
+                    $actions[$band] = 'log';
+                }
+            }
+        }
+
         $country = array('enabled' => false, 'mode' => 'deny', 'countries' => array(), 'action' => 'modifier');
         if ($this->data['country_posture'] !== self::COUNTRY_OFF) {
             $country = array(
@@ -497,7 +590,7 @@ final class Settings
         return array(
             'posture' => $this->data['posture'],
             'position' => array('before' => $before, 'fallback' => !$before),
-            'actions' => $this->data['actions'],
+            'actions' => $actions,
             'reputation' => array(
                 'enabled' => $this->checkActive(),
                 'block_verdicts' => $this->data['block_verdicts'],
