@@ -65,6 +65,15 @@ that directory is not writable it falls back to `plugins_loaded` and raises an a
     skin when armed. Reproduces the plugin's prior default behaviour exactly.
   - `taunt` — the troll "nice try" persona layered over the same decoy; still only ever **upgrades a
     404** (any engine fault degrades to a plain 404, never a 5xx).
+  - `blocked` — the structural inverse of stealth: every non-`allow` band is clamped **up** to `block`,
+    so instead of a decoy the plugin serves a generic, vendor-neutral **"access denied" HTML 403** page.
+    This is the posture for a deployment that should **look hardened** rather than lure. **Tradeoff
+    (opt-in):** a block page *advertises a defense* — a site that 403s where a plain WordPress site would
+    404 signals that something is filtering, which reverses the honeypot's stay-hidden stance. It can
+    also 403 a borderline `suspicious` visitor (a false-positive risk). The page carries no WAF/product
+    branding and no scanner/CRS signature; the only per-request variation is an inert reference token.
+    `allow` (clean traffic) and the relocated-login `safe_paths` are left intact, so blocked never locks
+    out real users or the operator. Blocked serves **no decoy**.
 
   The old `response_style` field is folded into `response_mode`: on upgrade an install with no saved
   mode derives it from its legacy style (`taunt`→`taunt`, `realistic`/`minimal`→`realistic`). A legacy
@@ -73,7 +82,7 @@ that directory is not writable it falls back to `plugins_loaded` and raises an a
   the capture-only stealth mode.
 - **Decoys** — `decoy_xmlrpc` and `decoy_wp_login` (both off by default) toggle the xmlrpc and wp-login
   decoys; `decoy_session_key` (a per-deploy secret) arms the wp-login mock-auth authed dashboard. All
-  are forced off in stealth mode.
+  are forced off in the non-luring modes (stealth and blocked).
 - **Login relocation (`login_relocation_enabled` + `login_slug`, off by default):** moves the real
   WordPress login to a secret slug (`/your-slug`) and inverts the vacated default — every hit on
   `/wp-login.php` (and the anon `/wp-admin` bounce that lands there) is now an attacker, so it serves
