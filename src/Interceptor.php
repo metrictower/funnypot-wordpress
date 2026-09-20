@@ -122,7 +122,11 @@ final class Interceptor
         $store = self::store($s, $clock);
 
         if ($position === 'before') {
-            self::recordMount($store, $clock);
+            // The forced pass (FP-0490) is a targeted re-entry for the vacated login endpoint, not a
+            // real BEFORE mount — skip the mount marker so it never mislabels the diagnostic as degraded.
+            if (!$force) {
+                self::recordMount($store, $clock);
+            }
             if (!$force && !$s->positionActive('before')) {
                 return;
             }

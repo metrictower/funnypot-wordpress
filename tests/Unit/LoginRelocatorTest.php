@@ -149,6 +149,22 @@ final class LoginRelocatorTest extends TestCase
         $this->assertStringNotContainsString('wp-login.php', $out);
     }
 
+    public function testRewriteSwapsOnlyFirstOccurrencePreservingRedirectTo(): void
+    {
+        // A nested "wp-login.php" inside a redirect_to query value must survive the rewrite.
+        $out = LoginRelocator::rewriteLoginUrl(
+            'https://ex.com/wp-login.php?redirect_to=https%3A%2F%2Fex.com%2Fwp-login.php%3Faction%3Dlogout',
+            'login',
+            'secret-login',
+            true,
+            false
+        );
+        $this->assertSame(
+            'https://ex.com/secret-login?redirect_to=https%3A%2F%2Fex.com%2Fwp-login.php%3Faction%3Dlogout',
+            $out
+        );
+    }
+
     public function testRewriteEmptySlugOrNonLoginUrlUnchanged(): void
     {
         $this->assertSame(

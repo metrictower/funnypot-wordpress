@@ -431,12 +431,23 @@ final class Settings
      * login has moved to the slug, so the footgun of "hidden login, no decoy" is removed; stealth still
      * keeps it off (capture-only).
      *
+     * The relocation-driven auto-arm MUST NOT fire when the relocation hooks are not actually active
+     * (e.g. multisite, where v1 leaves the hooks off): auto-arming the accept-any decoy on a real,
+     * un-relocated /wp-login.php would shadow the real login and lock the operator out. Settings is
+     * framework-free and cannot call is_multisite(), so the caller passes $relocationAutoArm (false to
+     * suppress). null defaults to loginRelocationActive() for single-site callers/tests. The explicit
+     * decoy_wp_login toggle is never suppressed — only the relocation-derived auto-arm is.
+     *
+     * @param bool|null $relocationAutoArm null => derive from loginRelocationActive()
      * @return array{xmlrpc:bool,wp_login:bool}
      */
-    public function decoyMap()
+    public function decoyMap($relocationAutoArm = null)
     {
         $serves = $this->responseModeServesDecoys();
-        $wpLogin = ($this->data['decoy_wp_login'] || $this->loginRelocationActive()) && $serves;
+        if ($relocationAutoArm === null) {
+            $relocationAutoArm = $this->loginRelocationActive();
+        }
+        $wpLogin = ($this->data['decoy_wp_login'] || $relocationAutoArm) && $serves;
 
         return array(
             'xmlrpc' => $this->data['decoy_xmlrpc'] && $serves,

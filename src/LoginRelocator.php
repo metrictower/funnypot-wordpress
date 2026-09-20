@@ -117,14 +117,17 @@ final class LoginRelocator
     public static function rewriteLoginUrl($url, $scheme, $slug, $onSlugContext, $isAuthed)
     {
         $url = (string) $url;
-        if ($slug === '' || strpos($url, 'wp-login.php') === false) {
+        $pos = strpos($url, 'wp-login.php');
+        if ($slug === '' || $pos === false) {
             return $url;
         }
         if (!$onSlugContext && !$isAuthed) {
             return $url; // slug-leak guard: never hand the slug to an anon, non-slug request
         }
 
-        return str_replace('wp-login.php', $slug, $url);
+        // Swap only the FIRST occurrence — the path segment. A later "wp-login.php" inside a query
+        // value (e.g. a redirect_to) must be left intact.
+        return substr($url, 0, $pos) . $slug . substr($url, $pos + strlen('wp-login.php'));
     }
 
     // --- hook bodies (each fail-open) ------------------------------------------------------------

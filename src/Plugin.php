@@ -124,8 +124,13 @@ final class Plugin
         };
         Interceptor::$executorProvider = array(__CLASS__, 'executor');
         Interceptor::$installedSetProvider = array(__CLASS__, 'installedSetData');
-        // Wire the decoy opt-ins from Settings (stealth forces them off inside decoyMap()).
-        Interceptor::$decoys = self::settings()->decoyMap();
+        // Wire the decoy opt-ins from Settings (stealth forces them off inside decoyMap()). On
+        // multisite the relocation hooks are not mounted (v1 single-site only), so the relocation-driven
+        // wp-login decoy auto-arm must be suppressed too — otherwise the accept-any decoy would shadow
+        // a real, un-relocated /wp-login.php and lock the operator out. The explicit decoy_wp_login
+        // toggle still applies. is_multisite() is available at this hook.
+        $multisite = function_exists('is_multisite') && is_multisite();
+        Interceptor::$decoys = self::settings()->decoyMap($multisite ? false : null);
 
         // Login relocation seams (FP-0490). Each hook is fail-open (try/catch -> real login).
         LoginRelocator::$settingsProvider = array(__CLASS__, 'settings');

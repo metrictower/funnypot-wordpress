@@ -92,4 +92,32 @@ final class DecoySeamWiringTest extends TestCase
         ))->decoyMap();
         $this->assertTrue($map['wp_login']);
     }
+
+    public function testMultisiteSuppressesRelocationDecoyAutoArm(): void
+    {
+        // The no-lockout gate: on multisite the relocation hooks are not mounted, so Plugin passes
+        // $relocationAutoArm=false and the decoy must NOT auto-arm on the real /wp-login.php — arming
+        // the accept-any decoy there would shadow the un-relocated real login and lock the operator out.
+        $s = $this->settings(array(
+            'enabled' => true,
+            'login_relocation_enabled' => true,
+            'login_slug' => 'secret-login',
+            'response_mode' => 'realistic',
+            'decoy_wp_login' => false,
+        ));
+        $this->assertFalse($s->decoyMap(false)['wp_login']);
+    }
+
+    public function testMultisiteStillHonorsExplicitWpLoginDecoyToggle(): void
+    {
+        // Only the relocation-driven auto-arm is suppressed; an explicit decoy_wp_login=true still arms.
+        $s = $this->settings(array(
+            'enabled' => true,
+            'login_relocation_enabled' => true,
+            'login_slug' => 'secret-login',
+            'response_mode' => 'realistic',
+            'decoy_wp_login' => true,
+        ));
+        $this->assertTrue($s->decoyMap(false)['wp_login']);
+    }
 }
