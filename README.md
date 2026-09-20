@@ -74,6 +74,27 @@ that directory is not writable it falls back to `plugins_loaded` and raises an a
 - **Decoys** — `decoy_xmlrpc` and `decoy_wp_login` (both off by default) toggle the xmlrpc and wp-login
   decoys; `decoy_session_key` (a per-deploy secret) arms the wp-login mock-auth authed dashboard. All
   are forced off in stealth mode.
+- **Login relocation (`login_relocation_enabled` + `login_slug`, off by default):** moves the real
+  WordPress login to a secret slug (`/your-slug`) and inverts the vacated default — every hit on
+  `/wp-login.php` (and the anon `/wp-admin` bounce that lands there) is now an attacker, so it serves
+  the wp-login mock-auth decoy (auto-armed when relocation is active) + WP-native capture, with zero
+  false positives from real users. The technique is re-derived from WPS Hide Login (no code vendored):
+  no core files are renamed and no rewrite rules are added, so **deactivating the plugin (or clearing
+  the slug) restores `/wp-login.php` immediately**. Key behaviours and caveats:
+  - **No-lockout / fail-open:** the slug is allowlisted from the engine (a hard `safe-path` allow under
+    every posture), an invalid/empty slug leaves relocation off (the real login is untouched), an
+    authenticated operator and `action=postpass` (password-protected posts) are carved out to the real
+    login, and every hook degrades to the real login on any fault — never a lockout, never a 5xx.
+  - **Slug-leak guard (divergence from WPS Hide Login):** login-URL rewriting is scoped to the slug
+    page itself + authenticated contexts. `login_url` is **never** rewritten for anonymous requests, so
+    an anon `/wp-admin` bounce and front-end login links resolve to the **default** `/wp-login.php` (the
+    decoy), never the slug. **Bookmark the slug** — `/wp-admin` deliberately does not auto-bounce to the
+    real login (that would hand the secret to any attacker who probes `/wp-admin`).
+  - **Scope:** relocation does **not** hide REST (`/wp-json`) or XML-RPC (`xmlrpc.php`) authentication —
+    they bypass `wp-login.php` and are covered separately by WP-native capture + the xmlrpc decoy. Most
+    effective in `realistic`/`taunt` (stealth serves no decoy — the vacated default is capture-only and
+    the real login stays reachable there). **Single-site only in v1** (multisite is a clean no-op). A
+    page cache in front of WordPress should exclude the slug and `/wp-login.php` from caching.
 - **Advanced: real-route actions / severity ceiling / attack emulation / nuclei reflection** — how a
   fake looks and which per-band action (`allow`/`log`/`block`/`deceive`) runs within realistic/taunt.
 - **Plugin/theme enumeration absorber (on by default):** a real site runs ~10-30 plugins, so a

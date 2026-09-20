@@ -78,4 +78,18 @@ final class DecoySeamWiringTest extends TestCase
             return '';
         })->decoySessionKey);
     }
+
+    public function testActiveRelocationAutoArmsWpLoginDecoy(): void
+    {
+        // FP-0490 Derivation B2: relocation active auto-arms the wp-login decoy on the vacated default
+        // even with decoy_wp_login off, so there is never a hidden login with no decoy behind it.
+        $map = $this->settings(array(
+            'enabled' => true,
+            'login_relocation_enabled' => true,
+            'login_slug' => 'secret-login',
+            'response_mode' => 'realistic',
+            'decoy_wp_login' => false,
+        ))->decoyMap();
+        $this->assertTrue($map['wp_login']);
+    }
 }

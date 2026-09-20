@@ -112,6 +112,31 @@ final class WpSiteProfile
         return self::STACK;
     }
 
+    /**
+     * Would a login slug collide with a genuine WP surface? Pure static — the single source of truth
+     * for slug validation (LoginRelocator, FP-0490). A slug is a single path segment, so it is
+     * projected to "/{slug}" and checked against the same reserved exact set / prefixes the real-route
+     * oracle uses, plus xmlrpc.php / wp-login.php. Decoy state is irrelevant here.
+     */
+    public static function isReservedSlug(string $slug): bool
+    {
+        $p = self::normalize('/' . ltrim($slug, '/'));
+
+        if ($p === '/xmlrpc.php' || $p === '/wp-login.php') {
+            return true;
+        }
+        if (in_array($p, self::$reservedExact, true)) {
+            return true;
+        }
+        foreach (self::$reservedPrefixes as $prefix) {
+            if (strpos($p, $prefix) === 0 || $p === rtrim($prefix, '/')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** Does this path resolve to a route that actually EXISTS on this site? (the FP-safety oracle) */
     public function routeExists(string $path)
     {

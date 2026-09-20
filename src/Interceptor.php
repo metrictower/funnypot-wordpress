@@ -19,6 +19,8 @@ final class Interceptor
     private static $ranBefore = false;
     /** @var bool */
     private static $ranFallback = false;
+    /** @var bool separate guard for the forced-before pass (FP-0490); see runBeforeForced() */
+    private static $ranForced = false;
 
     // --- injectable seams (production defaults are wired by Plugin::register) -------------------
     /** @var callable():Settings */
@@ -62,11 +64,29 @@ final class Interceptor
         self::handle('fallback');
     }
 
+    /**
+     * Run the BEFORE pass unconditionally, ignoring positionActive('before') (FP-0490). The login
+     * relocator calls this from plugins_loaded@1 when the vacated default /wp-login.php should serve
+     * the decoy under a posture (honeypot) that leaves the BEFORE position off. It uses a SEPARATE
+     * $ranForced guard because runBefore@0 already set $ranBefore=true before returning early at the
+     * inactive-before gate — reusing that guard would silently no-op and the decoy would never fire.
+     * When BEFORE is active (WAF/both) runBefore@0 has already served + exited, so this never runs.
+     */
+    public static function runBeforeForced()
+    {
+        if (self::$ranForced) {
+            return;
+        }
+        self::$ranForced = true;
+        self::handle('before', true);
+    }
+
     /** Reset idempotency guards (tests only). */
     public static function reset()
     {
         self::$ranBefore = false;
         self::$ranFallback = false;
+        self::$ranForced = false;
     }
 
     /**
@@ -91,7 +111,7 @@ final class Interceptor
 
     // ---------------------------------------------------------------------------------------------
 
-    private static function handle($position)
+    private static function handle($position, $force = false)
     {
         $s = self::settings();
         if ($s === null || !$s->enabled()) {
@@ -103,7 +123,7 @@ final class Interceptor
 
         if ($position === 'before') {
             self::recordMount($store, $clock);
-            if (!$s->positionActive('before')) {
+            if (!$force && !$s->positionActive('before')) {
                 return;
             }
         } else {

@@ -73,6 +73,11 @@ final class SettingsScreen
         self::password($opt, 'decoy_session_key', 'Decoy session key (per-deploy secret; arms the authed skin)', $d['decoy_session_key']);
         self::help('Decoys are forced off in stealth mode. The authed skin arms only when wp-login decoy is on and a session key is set.');
 
+        echo '<tr><th colspan="2"><h2>Login relocation</h2></th></tr>';
+        self::checkbox($opt, 'login_relocation_enabled', 'Relocate the login endpoint', $d['login_relocation_enabled']);
+        self::text($opt, 'login_slug', 'Secret login slug (e.g. my-secret-login)', $d['login_slug']);
+        self::help('Moves the real login to /your-slug and turns the default /wp-login.php into the wp-login decoy (auto-armed). Bookmark the slug — /wp-admin does NOT bounce to the real login by design (that would leak the slug to attackers). Does NOT hide REST (/wp-json) or XML-RPC auth. Most effective in realistic/taunt (stealth serves no decoy). Single-site only in v1. An invalid/empty slug leaves relocation off and the real login untouched.');
+
         echo '<tr><th colspan="2"><h2>Advanced: real-route actions</h2></th></tr>';
         $actionChoices = array('allow' => 'allow', 'log' => 'log', 'block' => 'block', 'deceive' => 'deceive');
         self::select($opt . '[actions]', 'clean', 'Clean traffic', $d['actions']['clean'], $actionChoices);

@@ -243,4 +243,108 @@ final class SettingsTest extends TestCase
         $this->assertTrue($rep['enabled']);
         $this->assertSame(array('malicious', 'critical'), $rep['block_verdicts']);
     }
+
+    // --- login relocation (FP-0490) --------------------------------------------------------------
+
+    public function testSanitizeSlugCleansMixedInput(): void
+    {
+        $this->assertSame('my-secret-login', Settings::sanitizeSlug('  My Secret Login '));
+        $this->assertSame('a-b', Settings::sanitizeSlug('a__--!!b'));
+        $this->assertSame('login2026', Settings::sanitizeSlug('Login2026'));
+        $this->assertSame('', Settings::sanitizeSlug('!!!'));
+        $this->assertSame('', Settings::sanitizeSlug('   '));
+    }
+
+    public function testIsValidLoginSlugRejectsUnsafeSlugs(): void
+    {
+        $this->assertFalse(Settings::isValidLoginSlug(''));
+        $this->assertFalse(Settings::isValidLoginSlug('my-wp-login-x')); // contains wp-login
+        $this->assertFalse(Settings::isValidLoginSlug('wp-admin'));
+        $this->assertFalse(Settings::isValidLoginSlug('author'));        // WP query var
+        $this->assertFalse(Settings::isValidLoginSlug('feed'));          // WP query var
+        $this->assertFalse(Settings::isValidLoginSlug('wp-cron.php'));   // reserved surface
+        $this->assertFalse(Settings::isValidLoginSlug('wp-json'));       // reserved prefix dir
+        $this->assertTrue(Settings::isValidLoginSlug('secret-login'));
+        $this->assertTrue(Settings::isValidLoginSlug('my-door'));
+    }
+
+    public function testInvalidSlugStoresEmptyAndDeactivatesRelocation(): void
+    {
+        $s = Settings::fromArray(array(
+            'enabled' => true,
+            'login_relocation_enabled' => true,
+            'login_slug' => 'wp-admin',
+        ), $this->noConsts());
+        $this->assertSame('', $s->loginSlug());
+        $this->assertFalse($s->loginRelocationActive());
+    }
+
+    public function testLoginRelocationActiveRequiresMasterSwitchAndValidSlug(): void
+    {
+        $base = array('enabled' => true, 'login_relocation_enabled' => true, 'login_slug' => 'secret-login');
+
+        $this->assertTrue(Settings::fromArray($base, $this->noConsts())->loginRelocationActive());
+
+        // master switch off -> inactive
+        $offMaster = array_merge($base, array('enabled' => false));
+        $this->assertFalse(Settings::fromArray($offMaster, $this->noConsts())->loginRelocationActive());
+
+        // toggle off -> inactive
+        $offToggle = array_merge($base, array('login_relocation_enabled' => false));
+        $this->assertFalse(Settings::fromArray($offToggle, $this->noConsts())->loginRelocationActive());
+
+        // empty slug -> inactive
+        $noSlug = array_merge($base, array('login_slug' => ''));
+        $this->assertFalse(Settings::fromArray($noSlug, $this->noConsts())->loginRelocationActive());
+    }
+
+    public function testActiveRelocationAllowlistsSlugVariantsAtRuntime(): void
+    {
+        $s = Settings::fromArray(array(
+            'enabled' => true,
+            'login_relocation_enabled' => true,
+            'login_slug' => 'secret-login',
+        ), $this->noConsts());
+
+        // The engine reads toPolicyConfig()['allowlist']['safe_paths'] — assert the exact strings.
+        $safe = $s->toPolicyConfig('before')['allowlist']['safe_paths'];
+        $this->assertContains('/secret-login', $safe);
+        $this->assertContains('/secret-login/', $safe);
+
+        // Not persisted into the stored option (runtime-only injection).
+        $this->assertNotContains('/secret-login', $s->toArray()['allowlist']['safe_paths']);
+    }
+
+    public function testInactiveRelocationDoesNotAllowlistSlug(): void
+    {
+        $s = Settings::fromArray(array(
+            'enabled' => true,
+            'login_relocation_enabled' => false,
+            'login_slug' => 'secret-login',
+        ), $this->noConsts());
+        $safe = $s->toPolicyConfig('before')['allowlist']['safe_paths'];
+        $this->assertNotContains('/secret-login', $safe);
+        $this->assertNotContains('/secret-login/', $safe);
+    }
+
+    public function testActiveRelocationAutoArmsWpLoginDecoyExceptStealth(): void
+    {
+        $realistic = Settings::fromArray(array(
+            'enabled' => true,
+            'login_relocation_enabled' => true,
+            'login_slug' => 'secret-login',
+            'response_mode' => 'realistic',
+            'decoy_wp_login' => false, // auto-armed by relocation
+        ), $this->noConsts());
+        $this->assertTrue($realistic->decoyMap()['wp_login']);
+
+        $stealth = Settings::fromArray(array(
+            'enabled' => true,
+            'login_relocation_enabled' => true,
+            'login_slug' => 'secret-login',
+            'response_mode' => 'stealth',
+            'decoy_wp_login' => false,
+        ), $this->noConsts());
+        $this->assertFalse($stealth->decoyMap()['wp_login']);
+    }
 }

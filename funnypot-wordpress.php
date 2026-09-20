@@ -3,7 +3,7 @@
  * Plugin Name:       funnypot for WordPress
  * Plugin URI:        https://github.com/metrictower/funnypot-wordpress
  * Description:        Thin WordPress adapter over the funnypot-policy decision engine. Deceives scanners, optionally blocks known-bad actors, and reports abuse — inert by default.
- * Version:           0.1.0-dev
+ * Version:           0.2.0-dev
  * Requires PHP:      7.3
  * Requires at least: 5.5
  * Author:            metrictower

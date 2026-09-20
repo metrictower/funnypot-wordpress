@@ -137,6 +137,24 @@ final class WpSiteProfileTest extends TestCase
         $this->assertTrue($p->routeExists('/wp-content/uploads/2026/08/a.png'));
     }
 
+    public function testIsReservedSlugForGenuineSurfaces(): void
+    {
+        // The one source of truth for slug validation (FP-0490).
+        $this->assertTrue(WpSiteProfile::isReservedSlug('wp-login.php'));
+        $this->assertTrue(WpSiteProfile::isReservedSlug('xmlrpc.php'));
+        $this->assertTrue(WpSiteProfile::isReservedSlug('wp-cron.php'));
+        $this->assertTrue(WpSiteProfile::isReservedSlug('wp-admin'));
+        $this->assertTrue(WpSiteProfile::isReservedSlug('wp-json'));
+        $this->assertTrue(WpSiteProfile::isReservedSlug('wp-signup.php'));
+        $this->assertTrue(WpSiteProfile::isReservedSlug('WP-ADMIN')); // case-insensitive
+    }
+
+    public function testIsReservedSlugFalseForCustomSlug(): void
+    {
+        $this->assertFalse(WpSiteProfile::isReservedSlug('secret-login'));
+        $this->assertFalse(WpSiteProfile::isReservedSlug('my-door'));
+    }
+
     public function testToPolicyProfileProjectsExactPath(): void
     {
         $p = new WpSiteProfile();

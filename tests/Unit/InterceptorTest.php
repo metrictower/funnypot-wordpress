@@ -159,6 +159,47 @@ final class InterceptorTest extends TestCase
         $this->assertCount(1, $this->executed);
     }
 
+    public function testForcedBeforeFiresUnderHoneypotPostureAfterRunBeforeNoOp(): void
+    {
+        // Honeypot posture leaves BEFORE off: runBefore@0 sets $ranBefore then returns at the gate.
+        $this->settings(array('enabled' => true, 'posture' => 'honeypot'));
+        $decision = Decision::deceive(new \Funnypot\Policy\FakeResponse(200, array(), 'FAKE', 'text/plain'), null, 'sacrificial-path');
+        $this->engineReturning($decision);
+
+        Interceptor::runBefore();          // no-op under honeypot (before not active)
+        $this->assertCount(0, $this->executed);
+
+        Interceptor::runBeforeForced();    // separate guard -> the decoy fires despite before being off
+        $this->assertCount(1, $this->executed);
+        $this->assertSame(Decision::DECEIVE, $this->executed[0]->action());
+    }
+
+    public function testForcedBeforeIsIdempotent(): void
+    {
+        $this->settings(array('enabled' => true, 'posture' => 'honeypot'));
+        $this->engineReturning(Decision::deceive(new \Funnypot\Policy\FakeResponse(200, array(), 'x', 'text/plain')));
+        Interceptor::runBeforeForced();
+        Interceptor::runBeforeForced();
+        $this->assertCount(1, $this->executed);
+    }
+
+    public function testForcedBeforeThrowingEngineDegradesToWpProceeds(): void
+    {
+        $this->settings(array('enabled' => true, 'posture' => 'honeypot'));
+        $this->engineReturning(new \RuntimeException('boom'));
+        // A fault under the forced pass must still degrade to WP-proceeds (real login), never a 500.
+        Interceptor::runBeforeForced();
+        $this->assertCount(0, $this->executed);
+    }
+
+    public function testForcedBeforeStillGatedByMasterSwitch(): void
+    {
+        $this->settings(array('enabled' => false, 'posture' => 'honeypot'));
+        $this->engineReturning(Decision::deceive(new \Funnypot\Policy\FakeResponse(200, array(), 'x', 'text/plain')));
+        Interceptor::runBeforeForced();
+        $this->assertCount(0, $this->executed);
+    }
+
     /** Capture the SiteProfile the engine is handed so the oracle wiring can be asserted directly. */
     private function engineCapturingProfile(&$captured)
     {

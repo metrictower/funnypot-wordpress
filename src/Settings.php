@@ -34,6 +34,21 @@ final class Settings
     const CONST_BASE_URL = 'HONEYPOT_WP_MAINNET_BASE_URL';
     const CONST_KEY      = 'HONEYPOT_WP_MAINNET_KEY';
 
+    /**
+     * WP public + private query vars a login slug must never collide with (FP-0490). Re-derived from
+     * WP core's WP::$public_query_vars / WP::$private_query_vars — NOT vendored from any plugin. A slug
+     * equal to one of these would be swallowed by the main query and never reach the relocated login.
+     */
+    const FORBIDDEN_LOGIN_SLUGS = array(
+        'm', 'p', 'posts', 'w', 'cat', 'withcomments', 'withoutcomments', 's', 'search', 'exact',
+        'sentence', 'calendar', 'page', 'paged', 'more', 'tb', 'pb', 'author', 'order', 'orderby',
+        'year', 'monthnum', 'day', 'hour', 'minute', 'second', 'name', 'category_name', 'tag', 'feed',
+        'author_name', 'pagename', 'page_id', 'error', 'attachment', 'attachment_id', 'subpost',
+        'subpost_id', 'preview', 'robots', 'favicon', 'taxonomy', 'term', 'cpage', 'post_type',
+        'embed', 'post_format', 'rest_route', 'sitemap', 'offset', 'posts_per_page', 'nopaging',
+        'showposts', 'fields', 'menu_order', 'title',
+    );
+
     /** @var array normalized settings */
     private $data;
 
@@ -158,6 +173,13 @@ final class Settings
         $d['decoy_xmlrpc'] = isset($r['decoy_xmlrpc']) ? (bool) $r['decoy_xmlrpc'] : false;
         $d['decoy_wp_login'] = isset($r['decoy_wp_login']) ? (bool) $r['decoy_wp_login'] : false;
         $d['decoy_session_key'] = isset($r['decoy_session_key']) ? (string) $r['decoy_session_key'] : '';
+
+        // Login relocation (FP-0490). Inert by default. The slug is sanitized to a single lower-case
+        // dashed segment; an empty-or-invalid slug is stored as '' so relocation stays OFF (fail-open
+        // to the real default login — never a half-applied state that hides wp-login.php with no slug).
+        $d['login_relocation_enabled'] = isset($r['login_relocation_enabled']) ? (bool) $r['login_relocation_enabled'] : false;
+        $slug = self::sanitizeSlug(isset($r['login_slug']) ? (string) $r['login_slug'] : '');
+        $d['login_slug'] = self::isValidLoginSlug($slug) ? $slug : '';
         $d['severity_ceiling'] = self::whitelist(
             isset($r['severity_ceiling']) ? (string) $r['severity_ceiling'] : 'high',
             array('low', 'medium', 'high', 'critical'),
@@ -376,19 +398,49 @@ final class Settings
         return $this->data['decoy_session_key'];
     }
 
+    // --- login relocation (FP-0490) ---
+
+    public function loginRelocationEnabled()
+    {
+        return $this->data['login_relocation_enabled'];
+    }
+
+    /** The sanitized+validated login slug ('' when unset or invalid). */
+    public function loginSlug()
+    {
+        return $this->data['login_slug'];
+    }
+
+    /**
+     * Relocation is active iff the master switch is on AND the toggle is on AND a valid slug is set.
+     * It ties to enabled() because the vacated-default decoy needs the engine (master switch); without
+     * it the operator would hide the real login with nothing behind the default endpoint. A non-empty
+     * slug is already valid (invalid slugs are stored as ''). Inactive => real login everywhere.
+     */
+    public function loginRelocationActive()
+    {
+        return $this->data['enabled'] === true
+            && $this->data['login_relocation_enabled'] === true
+            && $this->data['login_slug'] !== '';
+    }
+
     /**
      * The Interceptor::$decoys seam values, with stealth forcing every decoy off (belt-and-braces with
-     * the toPolicyConfig() clamp). Realistic/taunt mirror the individual toggles.
+     * the toPolicyConfig() clamp). Realistic/taunt mirror the individual toggles. When relocation is
+     * active the wp-login decoy is auto-armed on the vacated default (FP-0490 Derivation B2) — the real
+     * login has moved to the slug, so the footgun of "hidden login, no decoy" is removed; stealth still
+     * keeps it off (capture-only).
      *
      * @return array{xmlrpc:bool,wp_login:bool}
      */
     public function decoyMap()
     {
         $serves = $this->responseModeServesDecoys();
+        $wpLogin = ($this->data['decoy_wp_login'] || $this->loginRelocationActive()) && $serves;
 
         return array(
             'xmlrpc' => $this->data['decoy_xmlrpc'] && $serves,
-            'wp_login' => $this->data['decoy_wp_login'] && $serves,
+            'wp_login' => $wpLogin,
         );
     }
 
@@ -586,6 +638,22 @@ final class Settings
             }
         }
 
+        // No-lockout guarantee (FP-0490 Derivation B1): allowlist the slug's pretty-permalink variants
+        // as exact safe_paths so the engine can never deceive/block the operator's real login on it,
+        // under ANY posture (allowlist is a STEP-1 hard-allow). Injected here at runtime (not persisted)
+        // so no stale slug accumulates in the stored option. Exact match only — a '*' wildcard would
+        // over-allow "/{slug}anything". Plain-permalink slug requests arrive on '/' (already a real
+        // route), so only the pretty variants need allowlisting.
+        $allowlist = $this->data['allowlist'];
+        if ($this->loginRelocationActive()) {
+            $slug = $this->data['login_slug'];
+            foreach (array('/' . $slug, '/' . $slug . '/') as $variant) {
+                if (!in_array($variant, $allowlist['safe_paths'], true)) {
+                    $allowlist['safe_paths'][] = $variant;
+                }
+            }
+        }
+
         $country = array('enabled' => false, 'mode' => 'deny', 'countries' => array(), 'action' => 'modifier');
         if ($this->data['country_posture'] !== self::COUNTRY_OFF) {
             $country = array(
@@ -610,7 +678,7 @@ final class Settings
             'country' => $country,
             'pin' => array('ttl_seconds' => $this->data['pin_ttl_seconds']),
             'suppression' => $this->data['suppression'],
-            'allowlist' => $this->data['allowlist'],
+            'allowlist' => $allowlist,
             'self_ips' => $this->data['self_ips'],
         );
     }
@@ -651,6 +719,43 @@ final class Settings
         }
 
         return array('fallback' => true, 'before' => false); // honeypot
+    }
+
+    /**
+     * Sanitize a raw login slug to a single lower-case dashed segment (FP-0490). Pure — Settings must
+     * stay framework-free, so this re-derives sanitize_title_with_dashes' rules in PHP rather than
+     * calling WP: lower-case, any run of non-[a-z0-9] becomes one dash, collapse repeats, trim dashes.
+     */
+    public static function sanitizeSlug($raw)
+    {
+        $s = strtolower(trim((string) $raw));
+        $s = preg_replace('/[^a-z0-9]+/', '-', $s);
+        $s = preg_replace('/-+/', '-', (string) $s);
+        $s = trim((string) $s, '-');
+
+        return $s === null ? '' : $s;
+    }
+
+    /**
+     * Is a sanitized slug safe to use as the relocated login endpoint (FP-0490)? Rejects empty, any
+     * slug containing wp-login/wp-admin, a WP query-var collision, and a reserved WP surface (one
+     * source of truth via WpSiteProfile::isReservedSlug). The caller stores '' when this is false, so
+     * relocation stays off unless the slug is genuinely usable.
+     */
+    public static function isValidLoginSlug($slug)
+    {
+        $slug = (string) $slug;
+        if ($slug === '') {
+            return false;
+        }
+        if (strpos($slug, 'wp-login') !== false || strpos($slug, 'wp-admin') !== false) {
+            return false;
+        }
+        if (in_array($slug, self::FORBIDDEN_LOGIN_SLUGS, true)) {
+            return false;
+        }
+
+        return !WpSiteProfile::isReservedSlug($slug);
     }
 
     private static function whitelist($value, array $allowed, $default)

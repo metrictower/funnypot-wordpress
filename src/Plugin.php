@@ -52,6 +52,20 @@ final class Plugin
         // each callback, so registering unconditionally is safe.
         WpNativeCapture::register();
 
+        // Login relocation (FP-0490). Single-site only in v1 (multisite left unhandled, not half-broken)
+        // and only when a valid slug + toggle are set. captureSlug@9999 runs after Interceptor
+        // runBefore@0; serveVacatedDefault@1 forces the BEFORE decoy on the vacated default under
+        // honeypot posture. The slug-scoped URL rewriters fast-path out unless a login URL is built.
+        $multisite = function_exists('is_multisite') && is_multisite();
+        if (!$multisite && self::settings()->loginRelocationActive()) {
+            add_action('plugins_loaded', array(LoginRelocator::class, 'captureSlug'), 9999);
+            add_action('plugins_loaded', array(LoginRelocator::class, 'serveVacatedDefault'), 1);
+            add_action('wp_loaded', array(LoginRelocator::class, 'serveSlug'));
+            add_filter('site_url', array(__CLASS__, 'filterSiteUrl'), 10, 4);
+            add_filter('network_site_url', array(__CLASS__, 'filterNetworkSiteUrl'), 10, 3);
+            add_filter('logout_url', array(__CLASS__, 'filterLogoutUrl'), 10, 2);
+        }
+
         add_action('admin_menu', array(SettingsScreen::class, 'register'));
         add_action('admin_menu', array(IntelDashboard::class, 'register'));
         add_action('admin_init', array(SettingsScreen::class, 'registerSetting'));
@@ -112,6 +126,27 @@ final class Plugin
         Interceptor::$installedSetProvider = array(__CLASS__, 'installedSetData');
         // Wire the decoy opt-ins from Settings (stealth forces them off inside decoyMap()).
         Interceptor::$decoys = self::settings()->decoyMap();
+
+        // Login relocation seams (FP-0490). Each hook is fail-open (try/catch -> real login).
+        LoginRelocator::$settingsProvider = array(__CLASS__, 'settings');
+        LoginRelocator::$serverProvider = static function () {
+            return isset($_SERVER) ? $_SERVER : array();
+        };
+        LoginRelocator::$isUserLoggedInProvider = static function () {
+            return function_exists('is_user_logged_in') ? (bool) is_user_logged_in() : false;
+        };
+        LoginRelocator::$requireRealLogin = static function () {
+            if (defined('ABSPATH')) {
+                require ABSPATH . 'wp-login.php';
+            }
+            exit;
+        };
+        LoginRelocator::$redirectToAdmin = static function () {
+            if (function_exists('wp_safe_redirect') && function_exists('admin_url')) {
+                wp_safe_redirect(admin_url());
+            }
+            exit;
+        };
 
         // WP-native capture seams (FP-0488). The deps closure memoizes so the heavy services() factory
         // runs at most once per request even under a system.multicall storm.
@@ -317,6 +352,67 @@ final class Plugin
             'hitlog' => $hitlog,
             'sensor_id' => $sensorId,
         );
+    }
+
+    // --- login relocation URL rewriting (FP-0490) ------------------------------------------------
+
+    /**
+     * site_url filter: rewrite a built login URL to the slug, scoped to the slug-render context or an
+     * authenticated user (slug-leak guard). Fast-paths out unless the URL builds wp-login.php.
+     */
+    public static function filterSiteUrl($url, $path = '', $scheme = null, $blogId = null)
+    {
+        return self::rewriteLogin($url, (string) $scheme);
+    }
+
+    /** network_site_url filter (3 args). Same slug-scoped rewrite as filterSiteUrl. */
+    public static function filterNetworkSiteUrl($url, $path = '', $scheme = null)
+    {
+        return self::rewriteLogin($url, (string) $scheme);
+    }
+
+    /** logout_url filter: authed-only by nature (a logout link is only ever shown to a logged-in user). */
+    public static function filterLogoutUrl($url, $redirect = '')
+    {
+        try {
+            if (strpos((string) $url, 'wp-login.php') === false) {
+                return $url;
+            }
+
+            return LoginRelocator::rewriteLoginUrl(
+                $url,
+                'logout',
+                self::settings()->loginSlug(),
+                false,
+                self::currentUserLoggedIn()
+            );
+        } catch (\Throwable $e) {
+            return $url; // fail-open: leave the URL as WP built it
+        }
+    }
+
+    private static function rewriteLogin($url, $scheme)
+    {
+        try {
+            if (strpos((string) $url, 'wp-login.php') === false) {
+                return $url; // fast path — the vast majority of site_url() calls
+            }
+
+            return LoginRelocator::rewriteLoginUrl(
+                $url,
+                $scheme,
+                self::settings()->loginSlug(),
+                LoginRelocator::isRenderingSlug(),
+                self::currentUserLoggedIn()
+            );
+        } catch (\Throwable $e) {
+            return $url; // fail-open
+        }
+    }
+
+    private static function currentUserLoggedIn()
+    {
+        return function_exists('is_user_logged_in') ? (bool) is_user_logged_in() : false;
     }
 
     // --- admin notices ---------------------------------------------------------------------------
