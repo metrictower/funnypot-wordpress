@@ -88,6 +88,21 @@ that directory is not writable it falls back to `plugins_loaded` and raises an a
   (off by default) blocks a source past it for `enum_ban_ttl_secs`. Fail-safe: a cold/unwarmed installed
   set reverts to the historical blanket behavior, so a genuine installed asset is never flagged. Turn
   the absorber off to restore blanket `/wp-content/plugins|themes/` handling.
+- **WP-native capture (`wp_native_capture`, off by default):** captures attacks that WordPress handles
+  itself — and which therefore never reach the Interceptor — into the **local** hit store by hooking
+  WP's own pipelines: `wp_login_failed` (credential stuffing), `xmlrpc_call` (`system.multicall`
+  amplification, `wp.getUsersBlogs` credential probing, `pingback.ping`), and REST
+  (`rest_authentication_errors`, `rest_user_query` user-enumeration). Capture-only: the REST filters
+  return their incoming value **unchanged**, so login/xmlrpc/REST behaviour is byte-identical whether
+  it is on or off. **Local intel only — nothing new is sent to mainnet** (it never builds a report
+  intent or calls the reporter). It never logs a real credential: the password is never in scope (it
+  hooks `wp_login_failed`, not `authenticate`), and a real-account failure is anonymised via a
+  `username_exists()` self-guard — no submitted username/password/XML-RPC arg/pingback URL is ever
+  stored, only IP + a fixed opaque reason + a bounded User-Agent. Durable rows are **rollup-gated** per
+  IP per channel per 60s window exactly like the enumeration absorber, so a single `system.multicall`
+  with N sub-calls (N `xmlrpc_call` fires) writes at most one hit row — the burst is captured as the
+  per-IP aggregate count (velocity), not as N rows. Every callback is degrade-safe: a capture fault
+  never breaks WP login/xmlrpc/REST.
 - **Reputation (verdict-first):** `check_enabled` + `block_verdicts` (default `malicious`, `critical`)
   + optional `min_block_score`. Cache-first, fail-open, never a synchronous request-path call. Off by
   default; requires `MAINNET_KEY`.

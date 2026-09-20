@@ -175,6 +175,10 @@ final class Settings
         // Auto-ban on escalation is a stronger, potentially-FP action -> off by default (opt-in).
         $d['enum_auto_ban'] = isset($r['enum_auto_ban']) ? (bool) $r['enum_auto_ban'] : false;
         $d['enum_ban_ttl_secs'] = self::clampInt(isset($r['enum_ban_ttl_secs']) ? $r['enum_ban_ttl_secs'] : 3600, 60, 86400, 3600);
+
+        // WP-native attack capture (FP-0488): hook WP's own login/xmlrpc/REST pipelines into the local
+        // hit store. Off by default (inert); local intel only, never changes what WordPress serves.
+        $d['wp_native_capture'] = isset($r['wp_native_capture']) ? (bool) $r['wp_native_capture'] : false;
         $d['seed_salt'] = isset($r['seed_salt']) ? (string) $r['seed_salt'] : '';
         $d['latency_ms'] = self::clampInt(isset($r['latency_ms']) ? $r['latency_ms'] : 0, 0, 60000, 0);
         $d['latency_jitter_ms'] = self::clampInt(isset($r['latency_jitter_ms']) ? $r['latency_jitter_ms'] : 0, 0, 60000, 0);
@@ -433,6 +437,12 @@ final class Settings
     public function enumBanTtlSecs()
     {
         return $this->data['enum_ban_ttl_secs'];
+    }
+
+    /** WP-native attack capture (login / xmlrpc / REST) into the local hit store (FP-0488). */
+    public function wpNativeCapture()
+    {
+        return $this->data['wp_native_capture'];
     }
 
     public function seedSalt()

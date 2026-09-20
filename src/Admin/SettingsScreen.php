@@ -88,6 +88,10 @@ final class SettingsScreen
         self::checkbox($opt, 'enum_auto_ban', 'Auto-ban on escalation (a stronger action — opt-in)', $d['enum_auto_ban']);
         self::text($opt, 'enum_ban_ttl_secs', 'Auto-ban TTL (seconds)', $d['enum_ban_ttl_secs']);
 
+        echo '<tr><th colspan="2"><h2>WP-native capture</h2></th></tr>';
+        self::checkbox($opt, 'wp_native_capture', 'Capture WP-native attacks (login / xmlrpc / REST)', $d['wp_native_capture']);
+        self::help('Logs credential-stuffing, XML-RPC abuse and REST user-enumeration that WordPress handles itself. Local intel only — never sent to mainnet. Never changes what WordPress serves.');
+
         echo '<tr><th colspan="2"><h2>Reputation (verdict-first)</h2></th></tr>';
         self::nestedCheckbox($opt, 'reputation', 'check_enabled', 'Enable reputation check', isset($d['check_enabled']) ? $d['check_enabled'] : false);
         self::select($opt . '[reputation]', 'fail_mode', 'Fail mode', $d['fail_mode'], array('open' => 'open (fail-open)', 'closed' => 'closed'));

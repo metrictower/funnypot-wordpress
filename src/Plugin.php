@@ -6,6 +6,7 @@ namespace Funnypot\WordPress;
 
 use Funnypot\WordPress\Admin\Notices;
 use Funnypot\WordPress\Admin\SettingsScreen;
+use Funnypot\WordPress\Capture\WpNativeCapture;
 use Funnypot\WordPress\Cli\HoneypotCommand;
 use Funnypot\WordPress\Geo\GeoIpRefresh;
 use Funnypot\WordPress\Log\ScanAbsorbingHitLogWriter;
@@ -45,6 +46,10 @@ final class Plugin
         // BEFORE position fallback (when the mu-shim is absent) + the FALLBACK 404 position.
         add_action('plugins_loaded', array(Interceptor::class, 'runBefore'), 0);
         add_action('template_redirect', array(Interceptor::class, 'runFallback'), 0);
+
+        // WP-native attack capture (FP-0488) — hooks WP's own login/xmlrpc/REST pipelines. Gated inside
+        // each callback, so registering unconditionally is safe.
+        WpNativeCapture::register();
 
         add_action('admin_menu', array(SettingsScreen::class, 'register'));
         add_action('admin_init', array(SettingsScreen::class, 'registerSetting'));
@@ -105,6 +110,25 @@ final class Plugin
         Interceptor::$installedSetProvider = array(__CLASS__, 'installedSetData');
         // Wire the decoy opt-ins from Settings (stealth forces them off inside decoyMap()).
         Interceptor::$decoys = self::settings()->decoyMap();
+
+        // WP-native capture seams (FP-0488). The deps closure memoizes so the heavy services() factory
+        // runs at most once per request even under a system.multicall storm.
+        WpNativeCapture::$settingsProvider = array(__CLASS__, 'settings');
+        $captureDeps = null;
+        WpNativeCapture::$depsProvider = static function () use (&$captureDeps) {
+            if ($captureDeps === null) {
+                $svc = self::services();
+                $captureDeps = array(
+                    'hitlog' => isset($svc['hitlog']) ? $svc['hitlog'] : null,
+                    'store' => isset($svc['store']) ? $svc['store'] : null,
+                );
+            }
+
+            return $captureDeps;
+        };
+        WpNativeCapture::$serverProvider = static function () {
+            return isset($_SERVER) ? $_SERVER : array();
+        };
     }
 
     /**
