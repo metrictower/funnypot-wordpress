@@ -44,6 +44,20 @@ final class InMemoryBackend implements StateBackend
         unset($this->store[$key]);
     }
 
+    /** Test-only: the live (unexpired) keys currently held, for state-isolation assertions. */
+    public function keys(): array
+    {
+        $now = $this->now();
+        $out = array();
+        foreach ($this->store as $key => $row) {
+            if ($row['exp'] === 0 || $row['exp'] >= $now) {
+                $out[] = $key;
+            }
+        }
+
+        return $out;
+    }
+
     private function now()
     {
         return (int) call_user_func($this->clock);
