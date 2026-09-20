@@ -50,6 +50,29 @@ else
   echo "[wp-init] WARN: plugin activation failed (is vendor/ present in the mounted tree? run 'composer install' in the repo, then 'docker compose restart wpcli')." >&2
 fi
 
+# The plugin's hit-store table is created on activation. A first-run activation can land before the DB
+# is fully ready and skip the table create; capture then has no table to write to. Verify it exists and
+# re-activate once if not. Idempotent and non-fatal — a persistent miss just logs a warning.
+hits_table_exists() {
+  local prefix
+  prefix="$(wp config get table_prefix 2>/dev/null || echo wp_)"
+  # A non-empty SHOW TABLES result means the table is present.
+  [ -n "$(wp db query "SHOW TABLES LIKE '${prefix}honeypot_wp_hits'" --skip-column-names 2>/dev/null || true)" ]
+}
+
+if hits_table_exists; then
+  echo "[wp-init] hits table present."
+else
+  echo "[wp-init] hits table missing after activation — re-activating once to force schema create..."
+  wp plugin deactivate "$PLUGIN_SLUG" >/dev/null 2>&1 || true
+  wp plugin activate "$PLUGIN_SLUG" >/dev/null 2>&1 || true
+  if hits_table_exists; then
+    echo "[wp-init] hits table present after re-activation."
+  else
+    echo "[wp-init] WARN: hits table still missing after re-activation — capture will degrade to a silent no-op until it exists." >&2
+  fi
+fi
+
 echo "[wp-init] status:"
 wp plugin list --fields=name,status,version 2>/dev/null | grep -i funnypot || true
 
