@@ -289,6 +289,66 @@ final class IntelDashboardTest extends TestCase
 
     // --- helpers ---------------------------------------------------------------------------------
 
+    /**
+     * FP-0493 N1 (stored-XSS guard): the captured pingback `targets` field is verbatim attacker input.
+     * renderView MUST escape every target as text — never emit it raw or in an attribute.
+     */
+    public function testEscapesHostilePingbackTargets(): void
+    {
+        $data = self::emptyData();
+        $data['pingbackTargets'] = array(array(
+            'ip' => '203.0.113.9',
+            'count' => 4,
+            'targets' => array(
+                'http://169.254.169.254/latest/meta-data/',
+                '"><script>alert(document.cookie)</script>',
+                'http://evil.example/"><img src=x onerror=alert(1)>',
+            ),
+        ));
+
+        $html = self::capture($data);
+
+        // No live markup breaks out of the cell...
+        $this->assertStringNotContainsString('<script>', $html);
+        $this->assertStringNotContainsString('<img', $html);
+        $this->assertStringNotContainsString('"><script', $html);
+        $this->assertStringNotContainsString('"><img', $html);
+        // ...the escaped form proves the escaper ran (not a strip)...
+        $this->assertStringContainsString('&lt;script&gt;', $html);
+        $this->assertStringContainsString('&quot;', $html);
+        // ...and the benign metadata target still renders (escaped text).
+        $this->assertStringContainsString('169.254.169.254', $html);
+    }
+
+    /** gather() reads the pingback SSRF targets from the local aggregate slot for each top IP. */
+    public function testGatherPingbackTargetsFromSlot(): void
+    {
+        $clock = new MutableClock(2000000);
+        $store = $this->store($clock);
+        $store->backend()->set('capture_agg:pingback:9.9.9.9', array(
+            'count' => 3,
+            'ua' => 'BadBot/1',
+            'targets' => array('http://169.254.169.254/', 'http://internal.host/'),
+        ), 3600);
+
+        $wpdb = new FakeWpdb();
+        $wpdb->topIps = array(array('ip' => '9.9.9.9', 'c' => 30, 'last' => 1999500));
+
+        $data = IntelDashboard::gather(array(
+            'wpdb' => $wpdb,
+            'store' => $store,
+            'reporter' => null,
+            'geo' => new WpGeoIp(null),
+            'paged' => 1,
+            'filterAction' => '',
+            'now' => 2000000,
+        ));
+
+        $this->assertCount(1, $data['pingbackTargets']);
+        $this->assertSame('9.9.9.9', $data['pingbackTargets'][0]['ip']);
+        $this->assertContains('http://169.254.169.254/', $data['pingbackTargets'][0]['targets']);
+    }
+
     private static function capture(array $data): string
     {
         ob_start();
@@ -305,6 +365,7 @@ final class IntelDashboardTest extends TestCase
             'byReason' => array(),
             'recent' => array(),
             'topIps' => array(),
+            'pingbackTargets' => array(),
             'rollups' => array(),
             'queueDepth' => null,
             'mirrorAgeSecs' => null,
