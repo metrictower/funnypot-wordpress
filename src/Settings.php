@@ -159,7 +159,7 @@ final class Settings
         if (isset($r['response_mode'])) {
             $d['response_mode'] = self::whitelist(
                 (string) $r['response_mode'],
-                array('stealth', 'realistic', 'taunt'),
+                array('stealth', 'realistic', 'taunt', 'blocked'),
                 'realistic'
             );
         } elseif (isset($r['response_style'])) {
@@ -363,20 +363,22 @@ final class Settings
         return $this->data['response_mode'];
     }
 
-    /** Realistic and taunt serve decoys; stealth never does. */
+    /** Only realistic and taunt serve decoys; stealth (capture-only) and blocked (pure denial) never do. */
     public function responseModeServesDecoys()
     {
-        return $this->data['response_mode'] !== 'stealth';
+        return in_array($this->data['response_mode'], array('realistic', 'taunt'), true);
     }
 
-    /** Core Config responseStyle for the current mode (stealth => minimal, but never synthesised). */
+    /** Core Config responseStyle for the current mode (stealth/blocked => minimal, but never synthesised). */
     public function coreResponseStyle()
     {
         $mode = $this->data['response_mode'];
         if ($mode === 'taunt') {
             return 'taunt';
         }
-        if ($mode === 'stealth') {
+        // stealth serves no fake; blocked bypasses core synthesis entirely (Decision::BLOCK -> emitBlock).
+        // Both return a valid minimal style for safety; it is never rendered on their paths.
+        if ($mode === 'stealth' || $mode === 'blocked') {
             return 'minimal';
         }
 
@@ -645,6 +647,15 @@ final class Settings
             foreach ($actions as $band => $action) {
                 if ($action !== 'allow') {
                     $actions[$band] = 'log';
+                }
+            }
+        } elseif ($this->data['response_mode'] === 'blocked') {
+            // Blocked is the structural inverse of stealth: clamp EVERY non-allow band UP to block so
+            // the DecisionExecutor's BLOCK path returns the "access denied" 403 page on every band. allow
+            // stays intact so clean traffic and the FP-0490 login safe_paths are never 403'd (no lockout).
+            foreach ($actions as $band => $action) {
+                if ($action !== 'allow') {
+                    $actions[$band] = 'block';
                 }
             }
         }

@@ -61,8 +61,9 @@ final class SettingsScreen
             'stealth' => 'stealth — capture-only, plain 404 on every band (lowest fingerprint)',
             'realistic' => 'realistic — believable template fakes + decoys',
             'taunt' => 'taunt — troll persona layered over the decoy',
+            'blocked' => 'blocked — generic "access denied" 403 page (looks hardened, does NOT lure)',
         ));
-        self::help('Stealth logs + reports, then serves the site\'s plain 404 (no decoy, no 403). Realistic serves byte-exact fakes. Taunt only ever upgrades a 404.');
+        self::help('Stealth logs + reports, then serves the site\'s plain 404 (no decoy, no 403). Realistic serves byte-exact fakes. Taunt only ever upgrades a 404. Blocked returns a generic security block page (403) instead of a decoy on every non-allow band — it ADVERTISES a defense (a fingerprint tradeoff vs the stay-hidden default) and can 403 a borderline "suspicious" visitor (a false-positive risk), so it is opt-in; clean traffic and the relocated login are never blocked.');
         self::select($opt, 'severity_ceiling', 'Severity ceiling', $d['severity_ceiling'], array('low' => 'low', 'medium' => 'medium', 'high' => 'high', 'critical' => 'critical'));
         self::checkbox($opt, 'attack_emulation', 'Attack-class emulation', $d['attack_emulation']);
         self::checkbox($opt, 'nuclei_reflection', 'Nuclei reflection', $d['nuclei_reflection']);
