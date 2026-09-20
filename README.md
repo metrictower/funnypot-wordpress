@@ -277,3 +277,23 @@ bash bin/build.sh    # composer install --no-dev (bundle policy/core/mainnet-cli
   until then).
 - The reserved L6 local allow/deny overlay; runtime signed rule-update in the WP admin; multisite
   network UI; wordpress.org SVN distribution.
+
+## Try it locally (Docker)
+
+A `docker-compose.yml` stands up real WordPress with this plugin live-mounted and activated, so you can
+click through the Funnypot settings/intel screens and confirm it installs cleanly. It doubles as an
+install smoke test.
+
+```bash
+docker compose up -d          # first boot provisions WP, creates the admin, activates the plugin
+open http://localhost:8919/wp-admin/     # log in: admin / funnypot
+docker compose down           # stop  (add -v to also wipe the db + wp volumes)
+```
+
+- **Non-standard host port `8919`** so it won't collide with other local stacks; the DB has no host port.
+- **Dev admin `admin` / `funnypot`** — a LOCAL-ONLY convenience, **not a secret**, never for a real site.
+- Settings: **Settings → Honeypot** (`/wp-admin/options-general.php?page=honeypot-wp`); the Intel dashboard
+  is its submenu.
+- The plugin is bind-mounted from the working tree (with its vendored `funnypot-core`/`-policy`), so edits
+  are live — reload wp-admin to see them. If a fresh clone has no `vendor/`, run `composer install` first.
+- Requires Docker; the run itself is developer/operator-invoked (not part of CI's PHP-only gates).

@@ -1,10 +1,10 @@
 <?php
 /**
  * Stable, versioned entry the must-use loader shim require's (SF-4). Kept tiny and skew-tolerant: it
- * only loads the plugin's autoloader and hands off to Honeypot\WP\MuEntry::boot(). The shim wraps the
+ * only loads the plugin's autoloader and hands off to Funnypot\WordPress\MuEntry::boot(). The shim wraps the
  * call in class_exists/method_exists + try/catch, so shim/plugin version skew degrades to inert.
  *
- * @package Honeypot\WP
+ * @package Funnypot\WordPress
  */
 
 if (!defined('ABSPATH')) {

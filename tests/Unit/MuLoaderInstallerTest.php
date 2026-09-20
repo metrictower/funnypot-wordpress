@@ -38,6 +38,10 @@ final class MuLoaderInstallerTest extends TestCase
         $this->assertStringContainsString('if (!is_file($honeypot_wp_bootstrap)) { return; }', $body);
         $this->assertStringContainsString("class_exists('Funnypot\\\\WordPress\\\\MuEntry')", $body);
         $this->assertStringContainsString('method_exists', $body);
+        // The emitted CALL must target the real class Funnypot\WordPress\MuEntry — NOT a spurious
+        // \Funnypot\Core\WordPress\MuEntry, which would throw + be swallowed, leaving the mu path inert.
+        $this->assertStringContainsString('\\Funnypot\\WordPress\\MuEntry::boot()', $body);
+        $this->assertStringNotContainsString('Core\\WordPress\\MuEntry', $body);
         $this->assertStringContainsString('catch (\\Throwable', $body);
     }
 

@@ -52,7 +52,7 @@ final class MuLoaderInstaller
             . "if (!is_file(\$honeypot_wp_bootstrap)) { return; } // plugin removed/renamed -> inert, never fatal\n"
             . "require_once \$honeypot_wp_bootstrap;\n"
             . "if (class_exists('Funnypot\\\\WordPress\\\\MuEntry') && method_exists('Funnypot\\\\WordPress\\\\MuEntry', 'boot')) {\n"
-            . "    try { \\Funnypot\Core\\WordPress\\MuEntry::boot(); } catch (\\Throwable \$e) { /* a fault must never take the site down */ }\n"
+            . "    try { \\Funnypot\\WordPress\\MuEntry::boot(); } catch (\\Throwable \$e) { /* a fault must never take the site down */ }\n"
             . "}\n";
     }
 
