@@ -43,4 +43,26 @@ final class SettingsSanitizeTest extends TestCase
         $this->assertFalse($out['enabled']);
         $this->assertSame('honeypot', $out['posture']);
     }
+
+    public function testBadLoginSlugRoundTripsOffThroughAdminPath(): void
+    {
+        // A bad slug submitted through the admin sanitizer normalizes to '' (relocation stays off),
+        // proving the admin path uses the same normalizer as the runtime (FP-0490).
+        $out = SettingsSanitizer::sanitize(array(
+            'enabled' => true,
+            'login_relocation_enabled' => true,
+            'login_slug' => 'wp-admin',
+        ));
+        $this->assertSame('', $out['login_slug']);
+    }
+
+    public function testGoodLoginSlugIsSanitizedAndKept(): void
+    {
+        $out = SettingsSanitizer::sanitize(array(
+            'enabled' => true,
+            'login_relocation_enabled' => true,
+            'login_slug' => '  My Secret Login ',
+        ));
+        $this->assertSame('my-secret-login', $out['login_slug']);
+    }
 }

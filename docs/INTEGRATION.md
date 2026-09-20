@@ -54,6 +54,23 @@ The integration test also runs this provisioning best-effort in `setUp()`, so a 
 | `GET /<unknown benign path>` | `404`, no `X-Request-Id`, empty body | **Passthrough** — WordPress' own 404; no false positive on benign traffic |
 | `GET /` | `200`, no `X-Request-Id` | **Untouched** — real routes are never intercepted |
 
+### Login relocation (FP-0490)
+
+Needs live WordPress, so it is an operator/CI scenario (not run by the unit suite). Provision with a
+valid slug — e.g. `wp option update honeypot_wp_settings --format=json
+'{"enabled":true,"posture":"honeypot","response_mode":"realistic","login_relocation_enabled":true,"login_slug":"secret-login"}'`
+— then assert:
+
+| Request | Expected | Meaning |
+| --- | --- | --- |
+| `GET /secret-login` (logged out) | real WordPress login form | the slug reaches the genuine `wp-login.php` |
+| `POST /secret-login` valid creds | authenticated, `redirect_to` honored | real auth runs natively at the slug |
+| `GET /secret-login` (logged in) | redirect to the dashboard | authed operator bounced off the login |
+| `GET /wp-login.php` (logged out) | the wp-login mock-auth decoy | vacated default inverted to the decoy |
+| `GET /wp-admin/` (logged out) | bounced to the decoy at `/wp-login.php`, **not** the slug | slug-leak guard holds |
+| `POST /wp-login.php?action=postpass` | works (real WordPress) | password-protected-post carve-out |
+| deactivate the plugin / clear the slug | `/wp-login.php` is the real login again | no on-disk change, no rewrite flush |
+
 ## Environment notes
 
 - **PHP 8.2** in the container (`.wp-env.json` `phpVersion`) — a version WordPress 6.5 fully supports.

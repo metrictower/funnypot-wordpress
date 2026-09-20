@@ -67,6 +67,7 @@ final class InterceptorTest extends TestCase
         Interceptor::$policyFactory = null;
         Interceptor::$executorProvider = null;
         Interceptor::$storeProvider = null;
+        Interceptor::$installedSetProvider = null;
         Interceptor::reset();
         parent::tearDown();
     }
@@ -156,6 +157,124 @@ final class InterceptorTest extends TestCase
         Interceptor::runBefore();
         Interceptor::runBefore();
         $this->assertCount(1, $this->executed);
+    }
+
+    public function testForcedBeforeFiresUnderHoneypotPostureAfterRunBeforeNoOp(): void
+    {
+        // Honeypot posture leaves BEFORE off: runBefore@0 sets $ranBefore then returns at the gate.
+        $this->settings(array('enabled' => true, 'posture' => 'honeypot'));
+        $decision = Decision::deceive(new \Funnypot\Policy\FakeResponse(200, array(), 'FAKE', 'text/plain'), null, 'sacrificial-path');
+        $this->engineReturning($decision);
+
+        Interceptor::runBefore();          // no-op under honeypot (before not active)
+        $this->assertCount(0, $this->executed);
+
+        Interceptor::runBeforeForced();    // separate guard -> the decoy fires despite before being off
+        $this->assertCount(1, $this->executed);
+        $this->assertSame(Decision::DECEIVE, $this->executed[0]->action());
+    }
+
+    public function testForcedBeforeIsIdempotent(): void
+    {
+        $this->settings(array('enabled' => true, 'posture' => 'honeypot'));
+        $this->engineReturning(Decision::deceive(new \Funnypot\Policy\FakeResponse(200, array(), 'x', 'text/plain')));
+        Interceptor::runBeforeForced();
+        Interceptor::runBeforeForced();
+        $this->assertCount(1, $this->executed);
+    }
+
+    public function testForcedBeforeThrowingEngineDegradesToWpProceeds(): void
+    {
+        $this->settings(array('enabled' => true, 'posture' => 'honeypot'));
+        $this->engineReturning(new \RuntimeException('boom'));
+        // A fault under the forced pass must still degrade to WP-proceeds (real login), never a 500.
+        Interceptor::runBeforeForced();
+        $this->assertCount(0, $this->executed);
+    }
+
+    public function testForcedBeforeStillGatedByMasterSwitch(): void
+    {
+        $this->settings(array('enabled' => false, 'posture' => 'honeypot'));
+        $this->engineReturning(Decision::deceive(new \Funnypot\Policy\FakeResponse(200, array(), 'x', 'text/plain')));
+        Interceptor::runBeforeForced();
+        $this->assertCount(0, $this->executed);
+    }
+
+    /** Capture the SiteProfile the engine is handed so the oracle wiring can be asserted directly. */
+    private function engineCapturingProfile(&$captured)
+    {
+        Interceptor::$policyFactory = static function () use (&$captured) {
+            return new class($captured) {
+                private $ref;
+                public function __construct(&$ref)
+                {
+                    $this->ref = &$ref;
+                }
+                public function evaluate(RequestEvidence $e, SiteProfile $p)
+                {
+                    $this->ref = $p;
+                    return Decision::allow();
+                }
+            };
+        };
+    }
+
+    public function testInstalledSetProviderMarksUninstalledSlugSacrificial(): void
+    {
+        $this->settings(array('enabled' => true, 'posture' => 'WAF'));
+        Interceptor::$serverProvider = static function () {
+            return array('REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/wp-content/plugins/tutor/readme.txt', 'REMOTE_ADDR' => '203.0.113.9');
+        };
+        Interceptor::$installedSetProvider = static function () {
+            return array('plugins' => array('akismet'), 'themes' => array(), 'known' => true);
+        };
+        $captured = null;
+        $this->engineCapturingProfile($captured);
+
+        Interceptor::runBefore();
+
+        $this->assertInstanceOf(SiteProfile::class, $captured);
+        $this->assertTrue($captured->isSacrificialPath('/wp-content/plugins/tutor/readme.txt'));
+        $this->assertFalse($captured->routeExists('/wp-content/plugins/tutor/readme.txt'));
+    }
+
+    public function testInstalledSlugStaysRealRouteThroughInterceptor(): void
+    {
+        $this->settings(array('enabled' => true, 'posture' => 'WAF'));
+        Interceptor::$serverProvider = static function () {
+            return array('REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/wp-content/plugins/akismet/readme.txt', 'REMOTE_ADDR' => '203.0.113.9');
+        };
+        Interceptor::$installedSetProvider = static function () {
+            return array('plugins' => array('akismet'), 'themes' => array(), 'known' => true);
+        };
+        $captured = null;
+        $this->engineCapturingProfile($captured);
+
+        Interceptor::runBefore();
+
+        $this->assertInstanceOf(SiteProfile::class, $captured);
+        $this->assertFalse($captured->isSacrificialPath('/wp-content/plugins/akismet/readme.txt'));
+        $this->assertTrue($captured->routeExists('/wp-content/plugins/akismet/readme.txt'));
+    }
+
+    public function testFaultingInstalledSetProviderFailsSafeToBlanket(): void
+    {
+        $this->settings(array('enabled' => true, 'posture' => 'WAF'));
+        Interceptor::$serverProvider = static function () {
+            return array('REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/wp-content/plugins/tutor/readme.txt', 'REMOTE_ADDR' => '203.0.113.9');
+        };
+        Interceptor::$installedSetProvider = static function () {
+            throw new \RuntimeException('boom');
+        };
+        $captured = null;
+        $this->engineCapturingProfile($captured);
+
+        // A provider fault must not break interception; the profile reverts to blanket (real route).
+        Interceptor::runBefore();
+
+        $this->assertInstanceOf(SiteProfile::class, $captured);
+        $this->assertTrue($captured->routeExists('/wp-content/plugins/tutor/readme.txt'));
+        $this->assertFalse($captured->isSacrificialPath('/wp-content/plugins/tutor/readme.txt'));
     }
 
     public function testMountMarkerRecordedAndMappedByMountState(): void

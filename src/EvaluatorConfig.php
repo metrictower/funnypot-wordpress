@@ -31,6 +31,13 @@ final class EvaluatorConfig
             $seedSalt = self::resolveAuthSalt($authSaltResolver);
         }
 
+        // The authed-skin decoy arms only when its toggle is on, the mode serves decoys, and a key is
+        // set; stealth or an empty key leaves it disarmed (core treats null as feature-off).
+        $decoySessionKey = null;
+        if ($s->decoyWpLogin() && $s->responseModeServesDecoys() && $s->decoySessionKey() !== '') {
+            $decoySessionKey = $s->decoySessionKey();
+        }
+
         // Positional recipe (core Config constructor order). Each line pins its position + source.
         return new CoreConfig(
             'detect',                 //  1 mode          — classify()/synthesize() ignore it; core default
@@ -38,7 +45,7 @@ final class EvaluatorConfig
             'matched-only',           //  3 pathScope     — NOT in D's map; core default (must be passed)
             null,                     //  4 personaSeed   — the policy seeds; core default
             'coherent',               //  5 personaBreadth— NOT in D's map; core default (must be passed)
-            $s->responseStyle(),      //  6 responseStyle — STYLE
+            $s->coreResponseStyle(),  //  6 responseStyle — derived from response_mode
             $s->severityCeiling(),    //  7 severityCeiling
             65536,                    //  8 maxBodyBytes  — core default
             $s->latencyMs(),          //  9 latencyMs
@@ -49,7 +56,12 @@ final class EvaluatorConfig
             null,                     // 14 probeSignature— the policy's concern; core default
             $seedSalt,                // 15 seedSalt
             $s->catalogDisabled(),    // 16 exclude
-            $s->nucleiReflection()    // 17 nucleiReflection (highest position D sets)
+            $s->nucleiReflection(),   // 17 nucleiReflection
+            null,                     // 18 serverHeader  — unsurfaced seam; core default
+            null,                     // 19 poweredBy     — unsurfaced seam; core default
+            null,                     // 20 honeytokenKey — unsurfaced seam; core default
+            null,                     // 21 deploySeed    — the policy's concern; core default
+            $decoySessionKey          // 22 decoySessionKey — arms the wp-login authed skin
         );
     }
 

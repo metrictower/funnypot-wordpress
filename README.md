@@ -57,7 +57,73 @@ that directory is not writable it falls back to `plugins_loaded` and raises an a
 
 - **Posture:** `honeypot` (FALLBACK — upgrade a genuine 404, FP-free), `WAF` (BEFORE — block/deceive
   ahead of routing), or `both`.
-- **Response style / severity ceiling / attack emulation / nuclei reflection** — how a fake looks.
+- **Response mode** — the primary behaviour selector, composed in the plugin from two engine seams:
+  - `stealth` — capture-only. The hit is logged + reported, then WordPress serves its own **plain 404
+    on every band** (every non-`allow` action band is clamped to `log`, decoys are forced off). No
+    decoy, no 403 — the lowest fingerprint, pure intel.
+  - `realistic` (default) — byte-exact core template fakes, versioned decoys, and the authed wp-admin
+    skin when armed. Reproduces the plugin's prior default behaviour exactly.
+  - `taunt` — the troll "nice try" persona layered over the same decoy; still only ever **upgrades a
+    404** (any engine fault degrades to a plain 404, never a 5xx).
+
+  The old `response_style` field is folded into `response_mode`: on upgrade an install with no saved
+  mode derives it from its legacy style (`taunt`→`taunt`, `realistic`/`minimal`→`realistic`). A legacy
+  `minimal` install therefore moves to `realistic`, which serves richer fake bodies than core's terse
+  `minimal` tokens — intentional, since core `minimal` still emits a matcher-satisfying fake and is not
+  the capture-only stealth mode.
+- **Decoys** — `decoy_xmlrpc` and `decoy_wp_login` (both off by default) toggle the xmlrpc and wp-login
+  decoys; `decoy_session_key` (a per-deploy secret) arms the wp-login mock-auth authed dashboard. All
+  are forced off in stealth mode.
+- **Login relocation (`login_relocation_enabled` + `login_slug`, off by default):** moves the real
+  WordPress login to a secret slug (`/your-slug`) and inverts the vacated default — every hit on
+  `/wp-login.php` (and the anon `/wp-admin` bounce that lands there) is now an attacker, so it serves
+  the wp-login mock-auth decoy (auto-armed when relocation is active) + WP-native capture, with zero
+  false positives from real users. The technique is re-derived from WPS Hide Login (no code vendored):
+  no core files are renamed and no rewrite rules are added, so **deactivating the plugin (or clearing
+  the slug) restores `/wp-login.php` immediately**. Key behaviours and caveats:
+  - **No-lockout / fail-open:** the slug is allowlisted from the engine (a hard `safe-path` allow under
+    every posture), an invalid/empty slug leaves relocation off (the real login is untouched), an
+    authenticated operator and `action=postpass` (password-protected posts) are carved out to the real
+    login, and every hook degrades to the real login on any fault — never a lockout, never a 5xx.
+  - **Slug-leak guard (divergence from WPS Hide Login):** login-URL rewriting is scoped to the slug
+    page itself + authenticated contexts. `login_url` is **never** rewritten for anonymous requests, so
+    an anon `/wp-admin` bounce and front-end login links resolve to the **default** `/wp-login.php` (the
+    decoy), never the slug. **Bookmark the slug** — `/wp-admin` deliberately does not auto-bounce to the
+    real login (that would hand the secret to any attacker who probes `/wp-admin`).
+  - **Scope:** relocation does **not** hide REST (`/wp-json`) or XML-RPC (`xmlrpc.php`) authentication —
+    they bypass `wp-login.php` and are covered separately by WP-native capture + the xmlrpc decoy. Most
+    effective in `realistic`/`taunt` (stealth serves no decoy — the vacated default is capture-only and
+    the real login stays reachable there). **Single-site only in v1** (multisite is a clean no-op). A
+    page cache in front of WordPress should exclude the slug and `/wp-login.php` from caching.
+- **Advanced: real-route actions / severity ceiling / attack emulation / nuclei reflection** — how a
+  fake looks and which per-band action (`allow`/`log`/`block`/`deceive`) runs within realistic/taunt.
+- **Plugin/theme enumeration absorber (on by default):** a real site runs ~10-30 plugins, so a
+  request for `/wp-content/plugins/<slug>/readme.txt` (or a theme `style.css`) whose slug is **not
+  installed** is an unambiguous enumeration probe. When on, `WpSiteProfile` consults the installed set
+  (from `get_plugins()`/`wp_get_themes()`, cached in a transient and refreshed on
+  (de)activation / theme switch / upgrade — never called on the request path) so an uninstalled-slug
+  probe becomes sacrificial and the policy engine deceives + reports it; an installed slug stays a real
+  route. A nuclei-wordfence sweep is 80k+ requests, so the burst is **absorbed**: per source, a 60s
+  window collapses to one local `mass_plugin_scan` rollup row (with a probed-slug count + sample), not
+  one row per probe. `enum_escalate_threshold` sets the per-window escalation point; `enum_auto_ban`
+  (off by default) blocks a source past it for `enum_ban_ttl_secs`. Fail-safe: a cold/unwarmed installed
+  set reverts to the historical blanket behavior, so a genuine installed asset is never flagged. Turn
+  the absorber off to restore blanket `/wp-content/plugins|themes/` handling.
+- **WP-native capture (`wp_native_capture`, off by default):** captures attacks that WordPress handles
+  itself — and which therefore never reach the Interceptor — into the **local** hit store by hooking
+  WP's own pipelines: `wp_login_failed` (credential stuffing), `xmlrpc_call` (`system.multicall`
+  amplification, `wp.getUsersBlogs` credential probing, `pingback.ping`), and REST
+  (`rest_authentication_errors`, `rest_user_query` user-enumeration). Capture-only: the REST filters
+  return their incoming value **unchanged**, so login/xmlrpc/REST behaviour is byte-identical whether
+  it is on or off. **Local intel only — nothing new is sent to mainnet** (it never builds a report
+  intent or calls the reporter). It never logs a real credential: the password is never in scope (it
+  hooks `wp_login_failed`, not `authenticate`), and a real-account failure is anonymised via a
+  `username_exists()` self-guard — no submitted username/password/XML-RPC arg/pingback URL is ever
+  stored, only IP + a fixed opaque reason + a bounded User-Agent. Durable rows are **rollup-gated** per
+  IP per channel per 60s window exactly like the enumeration absorber, so a single `system.multicall`
+  with N sub-calls (N `xmlrpc_call` fires) writes at most one hit row — the burst is captured as the
+  per-IP aggregate count (velocity), not as N rows. Every callback is degrade-safe: a capture fault
+  never breaks WP login/xmlrpc/REST.
 - **Reputation (verdict-first):** `check_enabled` + `block_verdicts` (default `malicious`, `critical`)
   + optional `min_block_score`. Cache-first, fail-open, never a synchronous request-path call. Off by
   default; requires `MAINNET_KEY`.
@@ -75,6 +141,27 @@ define('HONEYPOT_WP_MAINNET_KEY', '…');                             // a senso
 
 Reporting/checking are **inert without a key**. The single key is a mainnet **`sensor`**-tier key
 carrying both report rights and an escalation-check quota (O2).
+
+## Local intel dashboard
+
+**Settings → Honeypot Intel** is a read-only view of what the honeypot has caught locally (the
+Wordfence "Live Traffic" analog — the operator's reason to install). It renders the `honeypot_wp_hits`
+store and local state: summary tiles (total events, events in the last 24h, report-queue depth,
+blacklist-mirror age), a paginated recent-events table (time, IP, method, path, action, reason,
+status), top attacker IPs over the last 24h, and the `mass_plugin_scan` rollups. When WP-native
+capture is on, the login/xmlrpc/REST rows appear here too.
+
+- `manage_options`-gated and **read-only**: it makes no state changes, so it carries no nonce (the
+  guards are the capability gate + `absint`-clamped pagination). The recent-events list can be filtered
+  by a fixed action whitelist (`log`/`deceive`/`block`).
+- **No external I/O on render** — only local `$wpdb` and state reads. It never drains the reporter or
+  triggers a GeoIP/blacklist refresh.
+- **Escapes every value at output.** IP/path/User-Agent are attacker-controlled; they render only as
+  escaped text-node content, never into an HTML attribute.
+- Top-IP **User-Agent** and **current-window velocity** are a best-effort enrichment from the per-IP
+  aggregate slots (recent-window; an older IP shows "—"). The aggregate `count` is a current-60s-window
+  velocity, not a cumulative total, and is labelled as such. **Country** shows "—" until a local GeoIP
+  reader is wired (none is today); it is never a network lookup.
 
 ### WP-Cron caveat
 

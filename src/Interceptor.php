@@ -19,6 +19,8 @@ final class Interceptor
     private static $ranBefore = false;
     /** @var bool */
     private static $ranFallback = false;
+    /** @var bool separate guard for the forced-before pass (FP-0490); see runBeforeForced() */
+    private static $ranForced = false;
 
     // --- injectable seams (production defaults are wired by Plugin::register) -------------------
     /** @var callable():Settings */
@@ -39,6 +41,8 @@ final class Interceptor
     public static $storeProvider;
     /** @var array{xmlrpc:bool,wp_login:bool} decoy opt-ins for WpSiteProfile */
     public static $decoys = array('xmlrpc' => false, 'wp_login' => false);
+    /** @var callable():?array installed-set oracle for WpSiteProfile; null => blanket behavior */
+    public static $installedSetProvider;
 
     /** BEFORE position: hooked at priority 0 on muplugins_loaded (+ plugins_loaded fallback). */
     public static function runBefore()
@@ -60,11 +64,29 @@ final class Interceptor
         self::handle('fallback');
     }
 
+    /**
+     * Run the BEFORE pass unconditionally, ignoring positionActive('before') (FP-0490). The login
+     * relocator calls this from plugins_loaded@1 when the vacated default /wp-login.php should serve
+     * the decoy under a posture (honeypot) that leaves the BEFORE position off. It uses a SEPARATE
+     * $ranForced guard because runBefore@0 already set $ranBefore=true before returning early at the
+     * inactive-before gate — reusing that guard would silently no-op and the decoy would never fire.
+     * When BEFORE is active (WAF/both) runBefore@0 has already served + exited, so this never runs.
+     */
+    public static function runBeforeForced()
+    {
+        if (self::$ranForced) {
+            return;
+        }
+        self::$ranForced = true;
+        self::handle('before', true);
+    }
+
     /** Reset idempotency guards (tests only). */
     public static function reset()
     {
         self::$ranBefore = false;
         self::$ranFallback = false;
+        self::$ranForced = false;
     }
 
     /**
@@ -89,7 +111,7 @@ final class Interceptor
 
     // ---------------------------------------------------------------------------------------------
 
-    private static function handle($position)
+    private static function handle($position, $force = false)
     {
         $s = self::settings();
         if ($s === null || !$s->enabled()) {
@@ -100,8 +122,12 @@ final class Interceptor
         $store = self::store($s, $clock);
 
         if ($position === 'before') {
-            self::recordMount($store, $clock);
-            if (!$s->positionActive('before')) {
+            // The forced pass (FP-0490) is a targeted re-entry for the vacated login endpoint, not a
+            // real BEFORE mount — skip the mount marker so it never mislabels the diagnostic as degraded.
+            if (!$force) {
+                self::recordMount($store, $clock);
+            }
+            if (!$force && !$s->positionActive('before')) {
                 return;
             }
         } else {
@@ -119,7 +145,8 @@ final class Interceptor
             $evidence = RequestFactory::evidence($server, $rawBody, $s);
 
             $is404 = ($position === 'fallback') ? true : null; // BEFORE: the main query has not run
-            $wpProfile = new WpSiteProfile($is404, self::$decoys['xmlrpc'], self::$decoys['wp_login']);
+            $installedSet = self::installedSet();
+            $wpProfile = new WpSiteProfile($is404, self::$decoys['xmlrpc'], self::$decoys['wp_login'], $installedSet);
             $profile = $wpProfile->toPolicyProfile($evidence->path());
 
             $ctx = CoreEvaluator::contextFromEvidence($evidence);
@@ -199,6 +226,20 @@ final class Interceptor
         }
 
         return '';
+    }
+
+    private static function installedSet()
+    {
+        if (!is_callable(self::$installedSetProvider)) {
+            return null;
+        }
+        try {
+            $set = call_user_func(self::$installedSetProvider);
+            return is_array($set) ? $set : null;
+        } catch (\Throwable $ignored) {
+            // A provider fault reverts to the blanket oracle (fail-safe), not a broken interception.
+            return null;
+        }
     }
 
     private static function store($s, $clock)

@@ -34,6 +34,21 @@ final class Settings
     const CONST_BASE_URL = 'HONEYPOT_WP_MAINNET_BASE_URL';
     const CONST_KEY      = 'HONEYPOT_WP_MAINNET_KEY';
 
+    /**
+     * WP public + private query vars a login slug must never collide with (FP-0490). Re-derived from
+     * WP core's WP::$public_query_vars / WP::$private_query_vars — NOT vendored from any plugin. A slug
+     * equal to one of these would be swallowed by the main query and never reach the relocated login.
+     */
+    const FORBIDDEN_LOGIN_SLUGS = array(
+        'm', 'p', 'posts', 'w', 'cat', 'withcomments', 'withoutcomments', 's', 'search', 'exact',
+        'sentence', 'calendar', 'page', 'paged', 'more', 'tb', 'pb', 'author', 'order', 'orderby',
+        'year', 'monthnum', 'day', 'hour', 'minute', 'second', 'name', 'category_name', 'tag', 'feed',
+        'author_name', 'pagename', 'page_id', 'error', 'attachment', 'attachment_id', 'subpost',
+        'subpost_id', 'preview', 'robots', 'favicon', 'taxonomy', 'term', 'cpage', 'post_type',
+        'embed', 'post_format', 'rest_route', 'sitemap', 'offset', 'posts_per_page', 'nopaging',
+        'showposts', 'fields', 'menu_order', 'title',
+    );
+
     /** @var array normalized settings */
     private $data;
 
@@ -135,6 +150,36 @@ final class Settings
             array('minimal', 'realistic', 'taunt'),
             'realistic'
         );
+
+        // Operator-facing response mode — the primary control. It composes the served behaviour from
+        // two existing seams: the per-band actions clamp (stealth => capture-only plain 404) and the
+        // core responseStyle (realistic|taunt). An explicit response_mode wins; when it is absent but a
+        // legacy response_style is stored, derive the mode so an upgraded install keeps its persona
+        // (taunt stays taunt) instead of reverting to realistic.
+        if (isset($r['response_mode'])) {
+            $d['response_mode'] = self::whitelist(
+                (string) $r['response_mode'],
+                array('stealth', 'realistic', 'taunt'),
+                'realistic'
+            );
+        } elseif (isset($r['response_style'])) {
+            $d['response_mode'] = ((string) $r['response_style'] === 'taunt') ? 'taunt' : 'realistic';
+        } else {
+            $d['response_mode'] = 'realistic';
+        }
+
+        // Decoy opt-ins (dead-off by default). decoy_session_key arms the wp-login authed skin; empty
+        // leaves it disarmed. All are forced inert in stealth (see decoyMap()/coreResponseStyle()).
+        $d['decoy_xmlrpc'] = isset($r['decoy_xmlrpc']) ? (bool) $r['decoy_xmlrpc'] : false;
+        $d['decoy_wp_login'] = isset($r['decoy_wp_login']) ? (bool) $r['decoy_wp_login'] : false;
+        $d['decoy_session_key'] = isset($r['decoy_session_key']) ? (string) $r['decoy_session_key'] : '';
+
+        // Login relocation (FP-0490). Inert by default. The slug is sanitized to a single lower-case
+        // dashed segment; an empty-or-invalid slug is stored as '' so relocation stays OFF (fail-open
+        // to the real default login — never a half-applied state that hides wp-login.php with no slug).
+        $d['login_relocation_enabled'] = isset($r['login_relocation_enabled']) ? (bool) $r['login_relocation_enabled'] : false;
+        $slug = self::sanitizeSlug(isset($r['login_slug']) ? (string) $r['login_slug'] : '');
+        $d['login_slug'] = self::isValidLoginSlug($slug) ? $slug : '';
         $d['severity_ceiling'] = self::whitelist(
             isset($r['severity_ceiling']) ? (string) $r['severity_ceiling'] : 'high',
             array('low', 'medium', 'high', 'critical'),
@@ -143,6 +188,19 @@ final class Settings
         $d['attack_emulation'] = isset($r['attack_emulation']) ? (bool) $r['attack_emulation'] : false;
         $d['nuclei_reflection'] = isset($r['nuclei_reflection']) ? (bool) $r['nuclei_reflection'] : true;
         $d['catalog_disabled'] = self::strList(isset($r['catalog_disabled']) ? $r['catalog_disabled'] : array());
+
+        // Plugin/theme enumeration absorber (FP-0395). On by default when a posture is enabled; off
+        // reverts WpSiteProfile to blanket prefixes and drops the hit-log absorber decorator.
+        $d['plugin_enum_absorber'] = isset($r['plugin_enum_absorber']) ? (bool) $r['plugin_enum_absorber'] : true;
+        $d['enum_window_secs'] = self::clampInt(isset($r['enum_window_secs']) ? $r['enum_window_secs'] : 60, 5, 3600, 60);
+        $d['enum_escalate_threshold'] = self::clampInt(isset($r['enum_escalate_threshold']) ? $r['enum_escalate_threshold'] : 5, 1, 1000, 5);
+        // Auto-ban on escalation is a stronger, potentially-FP action -> off by default (opt-in).
+        $d['enum_auto_ban'] = isset($r['enum_auto_ban']) ? (bool) $r['enum_auto_ban'] : false;
+        $d['enum_ban_ttl_secs'] = self::clampInt(isset($r['enum_ban_ttl_secs']) ? $r['enum_ban_ttl_secs'] : 3600, 60, 86400, 3600);
+
+        // WP-native attack capture (FP-0488): hook WP's own login/xmlrpc/REST pipelines into the local
+        // hit store. Off by default (inert); local intel only, never changes what WordPress serves.
+        $d['wp_native_capture'] = isset($r['wp_native_capture']) ? (bool) $r['wp_native_capture'] : false;
         $d['seed_salt'] = isset($r['seed_salt']) ? (string) $r['seed_salt'] : '';
         $d['latency_ms'] = self::clampInt(isset($r['latency_ms']) ? $r['latency_ms'] : 0, 0, 60000, 0);
         $d['latency_jitter_ms'] = self::clampInt(isset($r['latency_jitter_ms']) ? $r['latency_jitter_ms'] : 0, 0, 60000, 0);
@@ -298,6 +356,105 @@ final class Settings
         return $this->data['response_style'];
     }
 
+    // --- response mode + decoys ---
+
+    public function responseMode()
+    {
+        return $this->data['response_mode'];
+    }
+
+    /** Realistic and taunt serve decoys; stealth never does. */
+    public function responseModeServesDecoys()
+    {
+        return $this->data['response_mode'] !== 'stealth';
+    }
+
+    /** Core Config responseStyle for the current mode (stealth => minimal, but never synthesised). */
+    public function coreResponseStyle()
+    {
+        $mode = $this->data['response_mode'];
+        if ($mode === 'taunt') {
+            return 'taunt';
+        }
+        if ($mode === 'stealth') {
+            return 'minimal';
+        }
+
+        return 'realistic';
+    }
+
+    public function decoyXmlrpc()
+    {
+        return $this->data['decoy_xmlrpc'];
+    }
+
+    public function decoyWpLogin()
+    {
+        return $this->data['decoy_wp_login'];
+    }
+
+    public function decoySessionKey()
+    {
+        return $this->data['decoy_session_key'];
+    }
+
+    // --- login relocation (FP-0490) ---
+
+    public function loginRelocationEnabled()
+    {
+        return $this->data['login_relocation_enabled'];
+    }
+
+    /** The sanitized+validated login slug ('' when unset or invalid). */
+    public function loginSlug()
+    {
+        return $this->data['login_slug'];
+    }
+
+    /**
+     * Relocation is active iff the master switch is on AND the toggle is on AND a valid slug is set.
+     * It ties to enabled() because the vacated-default decoy needs the engine (master switch); without
+     * it the operator would hide the real login with nothing behind the default endpoint. A non-empty
+     * slug is already valid (invalid slugs are stored as ''). Inactive => real login everywhere.
+     */
+    public function loginRelocationActive()
+    {
+        return $this->data['enabled'] === true
+            && $this->data['login_relocation_enabled'] === true
+            && $this->data['login_slug'] !== '';
+    }
+
+    /**
+     * The Interceptor::$decoys seam values, with stealth forcing every decoy off (belt-and-braces with
+     * the toPolicyConfig() clamp). Realistic/taunt mirror the individual toggles. When relocation is
+     * active the wp-login decoy is auto-armed on the vacated default (FP-0490 Derivation B2) — the real
+     * login has moved to the slug, so the footgun of "hidden login, no decoy" is removed; stealth still
+     * keeps it off (capture-only).
+     *
+     * The relocation-driven auto-arm MUST NOT fire when the relocation hooks are not actually active
+     * (e.g. multisite, where v1 leaves the hooks off): auto-arming the accept-any decoy on a real,
+     * un-relocated /wp-login.php would shadow the real login and lock the operator out. Settings is
+     * framework-free and cannot call is_multisite(), so the caller passes $relocationAutoArm (false to
+     * suppress). null defaults to loginRelocationActive() for single-site callers/tests. The explicit
+     * decoy_wp_login toggle is never suppressed — only the relocation-derived auto-arm is.
+     *
+     * @param bool|null $relocationAutoArm null => derive from loginRelocationActive()
+     * @return array{xmlrpc:bool,wp_login:bool}
+     */
+    public function decoyMap($relocationAutoArm = null)
+    {
+        $serves = $this->responseModeServesDecoys();
+        if ($relocationAutoArm === null) {
+            $relocationAutoArm = $this->loginRelocationActive();
+        }
+        $wpLogin = ($this->data['decoy_wp_login'] || $relocationAutoArm) && $serves;
+
+        return array(
+            'xmlrpc' => $this->data['decoy_xmlrpc'] && $serves,
+            'wp_login' => $wpLogin,
+        );
+    }
+
     public function severityCeiling()
     {
         return $this->data['severity_ceiling'];
@@ -316,6 +473,39 @@ final class Settings
     public function catalogDisabled()
     {
         return $this->data['catalog_disabled'];
+    }
+
+    // --- plugin/theme enumeration absorber (FP-0395) ---
+
+    public function pluginEnumAbsorber()
+    {
+        return $this->data['plugin_enum_absorber'];
+    }
+
+    public function enumWindowSecs()
+    {
+        return $this->data['enum_window_secs'];
+    }
+
+    public function enumEscalateThreshold()
+    {
+        return $this->data['enum_escalate_threshold'];
+    }
+
+    public function enumAutoBan()
+    {
+        return $this->data['enum_auto_ban'];
+    }
+
+    public function enumBanTtlSecs()
+    {
+        return $this->data['enum_ban_ttl_secs'];
+    }
+
+    /** WP-native attack capture (login / xmlrpc / REST) into the local hit store (FP-0488). */
+    public function wpNativeCapture()
+    {
+        return $this->data['wp_native_capture'];
     }
 
     public function seedSalt()
@@ -447,6 +637,34 @@ final class Settings
     {
         $before = ($position === PolicyConfig::POSITION_BEFORE);
 
+        // Stealth is capture-only: clamp EVERY non-allow band to log so the DecisionExecutor's
+        // band-agnostic LOG path returns to WP's plain 404 on every band — no 403 tell (default
+        // attack_class is block), no decoy (deceive). allow stays intact so clean traffic proceeds.
+        $actions = $this->data['actions'];
+        if ($this->data['response_mode'] === 'stealth') {
+            foreach ($actions as $band => $action) {
+                if ($action !== 'allow') {
+                    $actions[$band] = 'log';
+                }
+            }
+        }
+
+        // No-lockout guarantee (FP-0490 Derivation B1): allowlist the slug's pretty-permalink variants
+        // as exact safe_paths so the engine can never deceive/block the operator's real login on it,
+        // under ANY posture (allowlist is a STEP-1 hard-allow). Injected here at runtime (not persisted)
+        // so no stale slug accumulates in the stored option. Exact match only — a '*' wildcard would
+        // over-allow "/{slug}anything". Plain-permalink slug requests arrive on '/' (already a real
+        // route), so only the pretty variants need allowlisting.
+        $allowlist = $this->data['allowlist'];
+        if ($this->loginRelocationActive()) {
+            $slug = $this->data['login_slug'];
+            foreach (array('/' . $slug, '/' . $slug . '/') as $variant) {
+                if (!in_array($variant, $allowlist['safe_paths'], true)) {
+                    $allowlist['safe_paths'][] = $variant;
+                }
+            }
+        }
+
         $country = array('enabled' => false, 'mode' => 'deny', 'countries' => array(), 'action' => 'modifier');
         if ($this->data['country_posture'] !== self::COUNTRY_OFF) {
             $country = array(
@@ -461,7 +679,7 @@ final class Settings
         return array(
             'posture' => $this->data['posture'],
             'position' => array('before' => $before, 'fallback' => !$before),
-            'actions' => $this->data['actions'],
+            'actions' => $actions,
             'reputation' => array(
                 'enabled' => $this->checkActive(),
                 'block_verdicts' => $this->data['block_verdicts'],
@@ -471,7 +689,7 @@ final class Settings
             'country' => $country,
             'pin' => array('ttl_seconds' => $this->data['pin_ttl_seconds']),
             'suppression' => $this->data['suppression'],
-            'allowlist' => $this->data['allowlist'],
+            'allowlist' => $allowlist,
             'self_ips' => $this->data['self_ips'],
         );
     }
@@ -512,6 +730,43 @@ final class Settings
         }
 
         return array('fallback' => true, 'before' => false); // honeypot
+    }
+
+    /**
+     * Sanitize a raw login slug to a single lower-case dashed segment (FP-0490). Pure — Settings must
+     * stay framework-free, so this re-derives sanitize_title_with_dashes' rules in PHP rather than
+     * calling WP: lower-case, any run of non-[a-z0-9] becomes one dash, collapse repeats, trim dashes.
+     */
+    public static function sanitizeSlug($raw)
+    {
+        $s = strtolower(trim((string) $raw));
+        $s = preg_replace('/[^a-z0-9]+/', '-', $s);
+        $s = preg_replace('/-+/', '-', (string) $s);
+        $s = trim((string) $s, '-');
+
+        return $s === null ? '' : $s;
+    }
+
+    /**
+     * Is a sanitized slug safe to use as the relocated login endpoint (FP-0490)? Rejects empty, any
+     * slug containing wp-login/wp-admin, a WP query-var collision, and a reserved WP surface (one
+     * source of truth via WpSiteProfile::isReservedSlug). The caller stores '' when this is false, so
+     * relocation stays off unless the slug is genuinely usable.
+     */
+    public static function isValidLoginSlug($slug)
+    {
+        $slug = (string) $slug;
+        if ($slug === '') {
+            return false;
+        }
+        if (strpos($slug, 'wp-login') !== false || strpos($slug, 'wp-admin') !== false) {
+            return false;
+        }
+        if (in_array($slug, self::FORBIDDEN_LOGIN_SLUGS, true)) {
+            return false;
+        }
+
+        return !WpSiteProfile::isReservedSlug($slug);
     }
 
     private static function whitelist($value, array $allowed, $default)
