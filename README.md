@@ -269,8 +269,17 @@ is visible (Wordfence gap a).
 - **Fail-safe to allow, never a 5xx.** Any policy/evaluator/store fault degrades to "WordPress
   proceeds" — a 500 is itself a tell. The must-use loader shim is **degrade-safe** (SF-4): a plugin
   folder deleted without deactivation leaves the shim inert, never fatal.
-- **Only ever upgrade a 404.** The FALLBACK position fires only on a genuine `is_404()`, and the
-  `WpSiteProfile` real-route oracle keeps a fake from ever colliding with a real WP route.
+- **Only ever upgrade a not-genuine request.** The FALLBACK position (hooked `template_redirect@0`,
+  before WP's `redirect_canonical@10`) fires on a genuine `is_404()` **and** — for core-owned scanner
+  paths — on a WP-preempted request that WordPress would otherwise 301/soft-200 (`/phpmyadmin`,
+  `/solr/admin`, `/actuator/*`, `/telescope/requests`, …). A **fail-safe-to-genuine** oracle decides
+  what is not-genuine: only a hard 404, or a front-page/blog-index fallthrough off root with an empty
+  main query. Every other WP-resolved state — real pages/posts/archives, `/feed`, `/robots.txt`,
+  `/favicon.ico`, search, and SEO-plugin sitemaps (which carry a `sitemap` query var) — is genuine and
+  never decoyed, even though core owns decoys for some of them (ownership can only *narrow* an already
+  not-genuine path, never promote a genuine one). Any doubt resolves to genuine. Serving the owned
+  decoy is gated by the response mode (realistic/taunt only; stealth/blocked stay WP-normal + log), and
+  the `WpSiteProfile` real-route oracle keeps a fake from ever colliding with a real WP route.
 - **Content-Type matches the request; status is app-chosen** (never model-chosen — no open redirect).
 - **Reporting is key-gated and self-guarded**: inert without `MAINNET_KEY`, refuses the operator's own
   `self_ips`, reports public-routable IPs only. The reporter enqueue arg order matches F's

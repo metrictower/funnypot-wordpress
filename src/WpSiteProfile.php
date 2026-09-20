@@ -59,8 +59,13 @@ final class WpSiteProfile
         '/database.sql',
     );
 
-    /** @var bool|callable|null is_404 seam; null at BEFORE (main query not run yet) */
-    private $is404;
+    /**
+     * @var bool|callable|null real-route seam: did WP resolve a genuine content object for this
+     * request? true => a real route; false => counterfactual-404 (no genuine object — a hard 404 or a
+     * WP-preempted soft-404 the host chose to treat as not-genuine); null at BEFORE (main query not run
+     * yet, only the static reserved set is known).
+     */
+    private $realRouteResolved;
     /** @var bool xmlrpc decoy opted in AND real feature disabled */
     private $xmlrpcDecoy;
     /** @var bool wp-login decoy opted in AND real feature disabled */
@@ -79,17 +84,19 @@ final class WpSiteProfile
     );
 
     /**
-     * @param bool|callable|null $is404        FALLBACK: the resolved is_404() (bool or fn():bool);
-     *                                         BEFORE: null (only the static reserved set is known)
+     * @param bool|callable|null $realRouteResolved FALLBACK: whether WP resolved a genuine content
+     *                                              object (bool or fn():bool); false is a
+     *                                              counterfactual-404 that earns the deceive. BEFORE:
+     *                                              null (only the static reserved set is known).
      * @param bool               $xmlrpcDecoy  xmlrpc.php becomes sacrificial only when true
      * @param bool               $wpLoginDecoy wp-login.php becomes sacrificial only when true
      * @param array|null         $installedSet {plugins:string[], themes:string[], known:bool} — the
      *                                          installed-set oracle. null/absent (the default) keeps the
      *                                          historical blanket behavior so existing callers are valid.
      */
-    public function __construct($is404 = null, $xmlrpcDecoy = false, $wpLoginDecoy = false, $installedSet = null)
+    public function __construct($realRouteResolved = null, $xmlrpcDecoy = false, $wpLoginDecoy = false, $installedSet = null)
     {
-        $this->is404 = $is404;
+        $this->realRouteResolved = $realRouteResolved;
         $this->xmlrpcDecoy = (bool) $xmlrpcDecoy;
         $this->wpLoginDecoy = (bool) $wpLoginDecoy;
 
@@ -166,9 +173,11 @@ final class WpSiteProfile
             }
         }
 
-        // Non-reserved: only the FALLBACK position knows whether WP resolved a real post.
-        if ($this->is404 !== null) {
-            return $this->resolveIs404() === false;
+        // Non-reserved: only the FALLBACK position knows whether WP resolved a real content object.
+        // A WP-preempted soft-404 (canonical redirect / front-page fallthrough) is passed as false
+        // here so it reports as a counterfactual-404, letting the engine deceive an owned decoy path.
+        if ($this->realRouteResolved !== null) {
+            return $this->resolveRealRoute() === true;
         }
 
         return false;
@@ -247,13 +256,13 @@ final class WpSiteProfile
         return new SiteProfile(self::STACK, $real, $sac);
     }
 
-    private function resolveIs404()
+    private function resolveRealRoute()
     {
-        if (is_callable($this->is404)) {
-            return (bool) call_user_func($this->is404);
+        if (is_callable($this->realRouteResolved)) {
+            return (bool) call_user_func($this->realRouteResolved);
         }
 
-        return (bool) $this->is404;
+        return (bool) $this->realRouteResolved;
     }
 
     /** Lower-case + strip a trailing slash (except root) so surface checks are variant-tolerant. */
