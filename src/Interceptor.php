@@ -43,6 +43,19 @@ final class Interceptor
     public static $decoys = array('xmlrpc' => false, 'wp_login' => false);
     /** @var callable():?array installed-set oracle for WpSiteProfile; null => blanket behavior */
     public static $installedSetProvider;
+    /**
+     * @var callable():bool FALLBACK real-route oracle (FP-0504): does WP consider this request a
+     * genuine route? Fail-safe-to-genuine — see isGenuineRoute(). Unset => legacy (!is_404()).
+     */
+    public static $genuineRouteProvider;
+    /**
+     * @var callable(\Funnypot\Policy\RequestEvidence,string):bool FALLBACK ownership pre-check
+     * (FP-0504): does core positively OWN a decoy for this not-genuine path? Unset => the built-in
+     * counterfactual classify via the core evaluator (coreProvider); no seam => false (no serve).
+     */
+    public static $decoyOwnershipProvider;
+    /** @var callable(Settings):?object raw core evaluator (Honeypot) provider; memoized by Plugin. */
+    public static $coreProvider;
 
     /** BEFORE position: hooked at priority 0 on muplugins_loaded (+ plugins_loaded fallback). */
     public static function runBefore()
@@ -54,7 +67,11 @@ final class Interceptor
         self::handle('before');
     }
 
-    /** FALLBACK position: hooked at priority 0 on template_redirect; only acts on a genuine is_404(). */
+    /**
+     * FALLBACK position: hooked at priority 0 on template_redirect (before redirect_canonical@10).
+     * Acts on a genuine is_404(), and — FP-0504 — on a WP-preempted not-genuine path (soft-404 /
+     * canonical-redirect / front-page fallthrough) that core positively owns a decoy for.
+     */
     public static function runFallback()
     {
         if (self::$ranFallback) {
@@ -109,6 +126,37 @@ final class Interceptor
         return $beforeConfigured ? 'not running' : 'n/a';
     }
 
+    /**
+     * The FALLBACK real-route oracle (FP-0504). Pure — extracted for unit test. FAIL-SAFE-TO-GENUINE:
+     * a request is NOT genuine only when
+     *   (a) WP returned a hard 404, or
+     *   (b) WP soft-resolved a non-root request to the front page / blog index with an EMPTY main query
+     *       (the canonical-redirect / soft-404 junk fallthrough — the /phpmyadmin case).
+     * Everything else is genuine and must never be decoyed. The empty-main-query clause is load-bearing:
+     * WP suppresses is_home for feed/robots/favicon/search (they are genuine under rule b already), but
+     * NOT for SEO-plugin sitemaps (/sitemap.xml, /sitemap_index.xml), which trip is_home=true while core
+     * owns them — they carry a `sitemap` query var, so a non-empty main query keeps them genuine here.
+     * Ownership is NOT a safety signal: core owns decoys for legitimate no-object endpoints, so this
+     * oracle — not the ownership gate — is what protects a real site's surfaces.
+     *
+     * @param bool $is404        WP resolved a hard 404
+     * @param bool $frontOrHome  is_front_page() or is_home() is true
+     * @param bool $requestIsRoot the normalised request path is "/"
+     * @param bool $mainQueryEmpty WP's main query resolved nothing (empty query_vars)
+     * @return bool genuine (true) => never decoy; not genuine (false) => eligible for the ownership check
+     */
+    public static function isGenuineRoute($is404, $frontOrHome, $requestIsRoot, $mainQueryEmpty)
+    {
+        if ((bool) $is404) {
+            return false;
+        }
+        if ((bool) $frontOrHome && !((bool) $requestIsRoot) && (bool) $mainQueryEmpty) {
+            return false;
+        }
+
+        return true;
+    }
+
     // ---------------------------------------------------------------------------------------------
 
     private static function handle($position, $force = false)
@@ -134,9 +182,6 @@ final class Interceptor
             if (!$s->positionActive('fallback')) {
                 return;
             }
-            if (!self::is404()) {
-                return; // the FALLBACK position only ever upgrades a genuine 404 (FP-free by construction)
-            }
         }
 
         try {
@@ -144,13 +189,35 @@ final class Interceptor
             $rawBody = self::rawBody();
             $evidence = RequestFactory::evidence($server, $rawBody, $s);
 
-            $is404 = ($position === 'fallback') ? true : null; // BEFORE: the main query has not run
+            // BEFORE: the main query has not run (only the reserved set is known). FALLBACK: the request
+            // is a counterfactual-404 — either a hard 404 or a WP-preempted soft-404 core owns a decoy
+            // for; both must report routeExists=false so the engine earns the deceive.
+            $realRoute = null;
+            if ($position === 'fallback') {
+                if (self::isGenuineRequest()) {
+                    return; // genuine WP page/endpoint -> never touch it (fail-safe-to-genuine)
+                }
+                if (!self::is404()) {
+                    // WP preempted the path (canonical redirect / soft-404 / front-page fallthrough).
+                    // Inert-by-default: stealth/blocked stay WP-normal (the engine would clamp anyway).
+                    if (!$s->responseModeServesDecoys()) {
+                        return;
+                    }
+                    // Ownership can only NARROW an already-not-genuine path (never promote a genuine
+                    // one — the oracle above ran first). An unowned soft-404 is left to WordPress.
+                    if (!self::coreOwnsDecoy($s, $evidence)) {
+                        return;
+                    }
+                }
+                $realRoute = false;
+            }
+
             $installedSet = self::installedSet();
-            $wpProfile = new WpSiteProfile($is404, self::$decoys['xmlrpc'], self::$decoys['wp_login'], $installedSet);
+            $wpProfile = new WpSiteProfile($realRoute, self::$decoys['xmlrpc'], self::$decoys['wp_login'], $installedSet);
             $profile = $wpProfile->toPolicyProfile($evidence->path());
 
             $ctx = CoreEvaluator::contextFromEvidence($evidence);
-            $engine = self::engine($s, $position, array('ctx' => $ctx, 'store' => $store, 'clock' => $clock));
+            $engine = self::engine($s, $position, array('ctx' => $ctx, 'store' => $store, 'clock' => $clock) + self::coreDep($s));
 
             $decision = $engine->evaluate($evidence, $profile);
 
@@ -240,6 +307,70 @@ final class Interceptor
             // A provider fault reverts to the blanket oracle (fail-safe), not a broken interception.
             return null;
         }
+    }
+
+    /**
+     * FALLBACK real-route oracle result (FP-0504). Fail-safe-to-genuine: a provider fault returns
+     * genuine so a real page is never decoyed. With no provider wired, fall back to the legacy rule
+     * (only a hard 404 is not genuine) so the fallback behaves exactly as before FP-0504.
+     */
+    private static function isGenuineRequest()
+    {
+        if (is_callable(self::$genuineRouteProvider)) {
+            try {
+                return (bool) call_user_func(self::$genuineRouteProvider);
+            } catch (\Throwable $ignored) {
+                return true; // doubt => genuine (never decoy a real page)
+            }
+        }
+
+        return !self::is404();
+    }
+
+    /**
+     * Does core positively OWN a decoy for this (already not-genuine) path? Only ever narrows — the
+     * genuine-route oracle has run first. The built-in check classifies with a counterfactual-404
+     * profile (routeExists=false) and treats a non-null core fake handle as ownership; any fault or
+     * missing core evaluator degrades to "not owned" (WP proceeds), never a serve.
+     */
+    private static function coreOwnsDecoy($s, $evidence)
+    {
+        if (is_callable(self::$decoyOwnershipProvider)) {
+            return (bool) call_user_func(self::$decoyOwnershipProvider, $evidence, $evidence->path());
+        }
+
+        $core = self::coreEvaluator($s);
+        if ($core === null) {
+            return false;
+        }
+        $ctx = CoreEvaluator::contextFromEvidence($evidence);
+        $cfProfile = (new WpSiteProfile(false, self::$decoys['xmlrpc'], self::$decoys['wp_login'], self::installedSet()))
+            ->toPolicyProfile($evidence->path());
+        $verdict = (new CoreEvaluator($core, $ctx))->classify($evidence, $cfProfile);
+
+        return $verdict->engineHandle() !== '';
+    }
+
+    /** The raw core evaluator (Honeypot) from the memoized provider; null when unavailable. */
+    private static function coreEvaluator($s)
+    {
+        if (is_callable(self::$coreProvider)) {
+            try {
+                return call_user_func(self::$coreProvider, $s);
+            } catch (\Throwable $ignored) {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    /** Engine dep: reuse the memoized core so the ownership check and evaluate share one build. */
+    private static function coreDep($s)
+    {
+        $core = self::coreEvaluator($s);
+
+        return $core !== null ? array('evaluator' => $core) : array();
     }
 
     private static function store($s, $clock)

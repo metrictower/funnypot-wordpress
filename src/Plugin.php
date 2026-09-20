@@ -42,6 +42,8 @@ final class Plugin
     private static $file = '';
     /** @var bool */
     private static $providersReady = false;
+    /** @var \Funnypot\Core\Contracts\Evaluator|null memoized per-request core evaluator (FP-0504) */
+    private static $coreEvaluatorMemo = null;
 
     /** Called from the plugin main file at ordinary plugin load. */
     public static function register($file)
@@ -164,6 +166,20 @@ final class Plugin
         };
         Interceptor::$executorProvider = array(__CLASS__, 'executor');
         Interceptor::$installedSetProvider = array(__CLASS__, 'installedSetData');
+        // FALLBACK real-route oracle (FP-0504): feed the pure fail-safe-to-genuine helper WP booleans,
+        // each function_exists/isset-guarded with doubt => genuine. query_vars is populated by
+        // WP::parse_request before template_redirect, so it is readable at our @0 hook.
+        Interceptor::$genuineRouteProvider = static function () {
+            $is404 = function_exists('is_404') && is_404();
+            $frontOrHome = (function_exists('is_front_page') && is_front_page())
+                || (function_exists('is_home') && is_home());
+
+            return Interceptor::isGenuineRoute($is404, $frontOrHome, self::requestPathIsRoot(), self::mainQueryEmpty());
+        };
+        // Memoized raw core evaluator, shared by the ownership pre-check and the engine build so a
+        // not-genuine owned path never compiles the rules artifact twice in one request. The built-in
+        // ownership check (Interceptor::coreOwnsDecoy) uses this; no separate ownership seam is wired.
+        Interceptor::$coreProvider = array(__CLASS__, 'coreEvaluator');
         // Wire the decoy opt-ins from Settings (stealth forces them off inside decoyMap()). On
         // multisite the relocation hooks are not mounted (v1 single-site only), so the relocation-driven
         // wp-login decoy auto-arm must be suppressed too — otherwise the accept-any decoy would shadow
@@ -235,6 +251,59 @@ final class Plugin
         $raw = function_exists('get_option') ? get_option(self::OPTION, array()) : array();
 
         return Settings::fromArray(is_array($raw) ? $raw : array());
+    }
+
+    /**
+     * The raw core evaluator (Honeypot), memoized for the request so the FP-0504 ownership pre-check
+     * and the engine build share one compile of the rules artifact. A build fault returns null (the
+     * interceptor then treats the path as unowned and lets WordPress proceed).
+     *
+     * @param Settings|null $s
+     * @return \Funnypot\Core\Contracts\Evaluator|null
+     */
+    public static function coreEvaluator($s = null)
+    {
+        if (self::$coreEvaluatorMemo !== null) {
+            return self::$coreEvaluatorMemo;
+        }
+        try {
+            $s = $s instanceof Settings ? $s : self::settings();
+            self::$coreEvaluatorMemo = \Funnypot\Core\Honeypot::default(EvaluatorConfig::fromSettings($s));
+        } catch (\Throwable $ignored) {
+            return null;
+        }
+
+        return self::$coreEvaluatorMemo;
+    }
+
+    /** Is the current request path the site root "/"? (FP-0504 oracle input; doubt => false). */
+    private static function requestPathIsRoot()
+    {
+        $uri = isset($_SERVER['REQUEST_URI']) ? (string) $_SERVER['REQUEST_URI'] : '';
+        $path = (string) parse_url($uri, PHP_URL_PATH);
+        if ($path === '') {
+            return false;
+        }
+
+        return rtrim($path, '/') === '' ; // "/" or "" after trimming trailing slashes
+    }
+
+    /**
+     * Did WP's main query resolve nothing (empty query_vars)? The discriminator between a true junk
+     * fallthrough (/phpmyadmin => empty) and a real custom-var endpoint (SEO sitemaps carry `sitemap`).
+     * query_vars is populated by WP::parse_request before template_redirect. Doubt (unset/unreadable)
+     * => false, so the not-genuine conjunction fails and the path stays genuine (FP-0504 fail-safe).
+     */
+    private static function mainQueryEmpty()
+    {
+        if (!isset($GLOBALS['wp']) || !is_object($GLOBALS['wp'])) {
+            return false;
+        }
+        if (!isset($GLOBALS['wp']->query_vars) || !is_array($GLOBALS['wp']->query_vars)) {
+            return false;
+        }
+
+        return empty($GLOBALS['wp']->query_vars);
     }
 
     /** Build the DecisionExecutor with the real emitter, hit-log, and reporter side-channels. */
