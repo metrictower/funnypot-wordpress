@@ -204,6 +204,11 @@ final class Settings
         // WP-native attack capture (FP-0488): hook WP's own login/xmlrpc/REST pipelines into the local
         // hit store. Off by default (inert); local intel only, never changes what WordPress serves.
         $d['wp_native_capture'] = isset($r['wp_native_capture']) ? (bool) $r['wp_native_capture'] : false;
+        // Invisible honeypot field on the REAL login form (FP-0505): inject a hidden decoy input via
+        // the login_form hook and flag a non-empty submit as a scripted-bot signal. Independent of
+        // wp_native_capture (either can be armed alone); local intel only, never blocks a real login.
+        // Off by default (inert).
+        $d['login_honeypot_field'] = isset($r['login_honeypot_field']) ? (bool) $r['login_honeypot_field'] : false;
         // XML-RPC pingback shield (FP-0493): capture the attacker-chosen pingback source URI (the SSRF
         // target) and refuse it with WP's canonical fault WITHOUT fetching. Off by default (inert).
         // Separate from wp_native_capture because this one CHANGES the served response.
@@ -537,6 +542,12 @@ final class Settings
     public function pingbackShield()
     {
         return $this->data['wp_pingback_shield'];
+    }
+
+    /** Invisible honeypot field on the real WP login form: render + passive detect (FP-0505). */
+    public function loginHoneypotField()
+    {
+        return $this->data['login_honeypot_field'];
     }
 
     public function seedSalt()

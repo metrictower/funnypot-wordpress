@@ -133,6 +133,25 @@ that directory is not writable it falls back to `plugins_loaded` and raises an a
   with N sub-calls (N `xmlrpc_call` fires) writes at most one hit row — the burst is captured as the
   per-IP aggregate count (velocity), not as N rows. Every callback is degrade-safe: a capture fault
   never breaks WP login/xmlrpc/REST.
+- **Login honeypot field (`login_honeypot_field`, off by default):** injects an invisible decoy
+  `<input>` into WordPress's **own** login form via the `login_form` action (the plugin does **not**
+  override `/wp-login.php`), and passively flags a login POST that arrives with that field non-empty —
+  a credential-stuffing bot that blindly fills every named input. A real human/browser never fills it
+  (an inline `display:none` wrapper plus `tabindex=-1`, `aria-hidden`, `autocomplete=off`), so a
+  non-empty submit is a **zero-false-positive scripted-bot signal**, captured (reason
+  `login_honeypot_field`) through the same rollup-gated **local** hit store as WP-native capture — no
+  PII, no password in scope (it reads only the one decoy key on `wp_login_failed`, never
+  `authenticate`), nothing sent to mainnet, and the submitted value is inspected for emptiness only,
+  never stored or reflected. It is **independent of `wp_native_capture`** (either can be armed alone);
+  when both are on and the field trips, the high-confidence honeypot reason owns the durable row. The
+  field **name** is fingerprint-safe: an ordinary contact-field name from the core closed list, derived
+  per-site from `crc32(host|salt)` (server-side `home_url()` host, not the client `Host` header), so it
+  is stable across a bot's GET render and POST submit yet differs per install — no fleet-wide constant
+  to correlate, no honeypot/trap self-unmask token. It **never blocks or alters a real login** (additive
+  markup + a passive side-effect only); both halves are try/catch-guarded. *Ceiling:* a bot that fills
+  the field **and** submits valid credentials succeeds, so `wp_login_failed` never fires and that (rare,
+  non-target) attempt is not caught — catching it would need `authenticate`, which pulls the password
+  into scope, deliberately not done.
 - **XML-RPC pingback shield (`wp_pingback_shield`, off by default):** neutralizes the classic
   `pingback.ping` SSRF / DDoS-reflection vector on a **real** WordPress site. It hooks WordPress's own
   `pingback_ping_source_uri` filter at priority 1 (before WP's `wp_http_validate_url`), captures a

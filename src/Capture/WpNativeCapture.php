@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Funnypot\WordPress\Capture;
 
+use Funnypot\Core\RequestContext;
+use Funnypot\Core\Support\LoginDecoyField;
+use Funnypot\WordPress\EvaluatorConfig;
 use Funnypot\WordPress\RequestFactory;
 use Funnypot\WordPress\Settings;
 
@@ -57,6 +60,10 @@ final class WpNativeCapture
     public static $depsProvider;
     /** @var callable():array */
     public static $serverProvider;
+    /** @var callable():string canonical server-side site host (NOT the client Host header) */
+    public static $hostProvider;
+    /** @var callable():array the submitted form ($_POST) */
+    public static $postProvider;
 
     /** Register the WP-native hooks. Gating happens inside each callback at fire time. */
     public static function register()
@@ -64,6 +71,8 @@ final class WpNativeCapture
         if (function_exists('add_action')) {
             add_action('wp_login_failed', array(__CLASS__, 'onLoginFailed'), 10, 1);
             add_action('xmlrpc_call', array(__CLASS__, 'onXmlrpcCall'), 10, 1);
+            // Login honeypot field (FP-0505): inject the hidden decoy input into WP's own login form.
+            add_action('login_form', array(__CLASS__, 'renderLoginField'));
         }
         if (function_exists('add_filter')) {
             // Pass-through filters: they return their incoming argument unchanged and only side-effect
@@ -79,24 +88,118 @@ final class WpNativeCapture
 
     // --- channel callbacks -----------------------------------------------------------------------
 
-    /** wp_login_failed (action). The username is used only for the known-account boolean, then discarded. */
+    /**
+     * wp_login_failed (action). Drives two INDEPENDENT captures, each behind its own toggle:
+     * the login honeypot field (FP-0505) and the native login-failure capture (FP-0488). Only the
+     * shared enabled() check is common, so arming one without the other works. The username is used
+     * only for the known-account boolean, then discarded; the password never enters scope.
+     */
     public static function onLoginFailed($username)
     {
         try {
             $s = self::settings();
-            if ($s === null || !$s->enabled() || !$s->wpNativeCapture()) {
+            if ($s === null || !$s->enabled()) {
                 return;
             }
-            $known = function_exists('username_exists') && username_exists((string) $username);
-            if ($known) {
-                // A real local account was targeted (or an operator typo): anonymise — store no username.
-                self::capture($s, 'login', 'login_fail_known_user', '/wp-login.php', true);
-            } else {
-                self::capture($s, 'login', 'login_failed', '/wp-login.php');
+            // Honeypot detection runs FIRST so that when both toggles are on and the field is tripped,
+            // the high-confidence 'login_honeypot_field' reason owns the durable rollup row (the gate
+            // writes the row on the first fire per IP/channel/window); the native reason then lands in
+            // the aggregate sample only.
+            if ($s->loginHoneypotField()) {
+                self::detectLoginHoneypot($s);
+            }
+            if ($s->wpNativeCapture()) {
+                $known = function_exists('username_exists') && username_exists((string) $username);
+                if ($known) {
+                    // A real local account was targeted (or an operator typo): anonymise — store no username.
+                    self::capture($s, 'login', 'login_fail_known_user', '/wp-login.php', true);
+                } else {
+                    self::capture($s, 'login', 'login_failed', '/wp-login.php');
+                }
             }
         } catch (\Throwable $ignored) {
             // a capture fault must never break WP login
         }
+    }
+
+    /**
+     * Passive detection for the login honeypot field: read the ONE decoy key from the submitted form
+     * and, if a scripted bot filled it, record a high-confidence signal. The value is inspected for
+     * emptiness only — never persisted or reflected — and the password is never touched (only the known
+     * decoy key is read). Called from within onLoginFailed's try/catch.
+     */
+    private static function detectLoginHoneypot(Settings $s)
+    {
+        $name = self::decoyFieldName($s);
+        if ($name === '') {
+            return;
+        }
+        $post = self::post();
+        $v = isset($post[$name]) ? $post[$name] : '';
+        if (is_string($v) && trim($v) !== '') {
+            self::capture($s, 'login', 'login_honeypot_field', '/wp-login.php');
+        }
+    }
+
+    /**
+     * Render the invisible honeypot field into WordPress's own login form (login_form action). A real
+     * user never fills it (display:none wrapper + tabindex=-1 + aria-hidden + autocomplete=off); a dumb
+     * form-filling bot does. Additive echo only — never alters or blocks a real login. The name is a
+     * derived closed-list token (never attacker input) but is escaped for hygiene. Any fault is
+     * swallowed so a render error can never break the login page.
+     */
+    public static function renderLoginField()
+    {
+        try {
+            $s = self::settings();
+            if ($s === null || !$s->enabled() || !$s->loginHoneypotField()) {
+                return;
+            }
+            $name = self::decoyFieldName($s);
+            if ($name === '') {
+                return;
+            }
+            // The label is a fixed, neutral optional-contact wording; the field NAME is a value picked
+            // from the core closed list, so name and label need not match — harmless under display:none,
+            // and deliberately not a "leave blank"/trap instruction (that would be a self-unmask tell).
+            echo '<p style="display:none" aria-hidden="true"><label>Alternate contact'
+                . '<input type="text" name="' . self::escAttr($name) . '" value="" tabindex="-1" autocomplete="off">'
+                . '</label></p>';
+        } catch (\Throwable $ignored) {
+            // a render fault must never break the login page
+        }
+    }
+
+    /**
+     * The decoy field name for this site, derived ONCE for both the render and the detect halves so
+     * they agree by construction. Keyed on crc32(seedFor) where seedFor = host|salt (personaSeed is
+     * null in EvaluatorConfig): the host comes from the server-side hostProvider (home_url), not the
+     * client Host header, so it is request-invariant and un-spoofable — the GET render name equals the
+     * POST submit name. Returns '' (callers no-op) when the host is unavailable.
+     */
+    private static function decoyFieldName(Settings $s)
+    {
+        $host = '';
+        if (is_callable(self::$hostProvider)) {
+            $host = (string) call_user_func(self::$hostProvider);
+        }
+        if ($host === '') {
+            return '';
+        }
+        $r = new RequestContext('GET', '/wp-login.php', '', array(), null, $host);
+        $c = EvaluatorConfig::fromSettings($s);
+
+        return LoginDecoyField::expectedName($r, $c);
+    }
+
+    /** Escape a value for an HTML attribute (WP esc_attr, with the ENT_QUOTES fallback when WP is absent). */
+    private static function escAttr($v)
+    {
+        if (function_exists('esc_attr')) {
+            return esc_attr((string) $v);
+        }
+
+        return htmlspecialchars((string) $v, ENT_QUOTES);
     }
 
     /** xmlrpc_call (action). Reads only the method name (a fixed vocabulary); args are never touched. */
@@ -400,5 +503,14 @@ final class WpNativeCapture
         }
 
         return isset($_SERVER) ? $_SERVER : array();
+    }
+
+    private static function post()
+    {
+        if (is_callable(self::$postProvider)) {
+            return (array) call_user_func(self::$postProvider);
+        }
+
+        return isset($_POST) ? $_POST : array();
     }
 }
