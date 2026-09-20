@@ -350,6 +350,34 @@ namespace Funnypot\WordPress\Tests\Unit {
             $this->assertTrue(true, 'a render/emit fault degrades to normal WordPress instead of faulting the request');
         }
 
+        // --- REAL EMIT PATH: the production responder guards headers_sent (degrade-safe) ----------
+
+        public function testProductionResponderGuardsHeadersSent(): void
+        {
+            $name = $this->decoyName();
+            $this->wire($this->settings(array('login_honeypot_field' => true)), self::HOST, array($name => 'bot', 'log' => 'admin'));
+
+            // Override the capturing responder with the REAL production shape (Plugin::wireProviders):
+            // guard headers_sent() BEFORE emit+exit. Under the PHPUnit CLI harness headers_sent() is
+            // already true, so the guard must short-circuit — no emit, no output, no exit — degrading to
+            // normal WordPress instead of echoing a half-page over output that already began.
+            $emitted = false;
+            WpNativeCapture::$responder = static function ($fake) use (&$emitted) {
+                if (function_exists('headers_sent') && headers_sent()) {
+                    return; // degrade-safe: never emit over output already started
+                }
+                $emitted = true; // stands in for ResponseEmitter::emit($fake, 200); exit
+            };
+
+            ob_start();
+            $this->failLogin();
+            $out = ob_get_clean();
+
+            $this->assertTrue(headers_sent(), 'harness precondition: output has already begun');
+            $this->assertFalse($emitted, 'the production emit path must NOT emit when headers are already sent');
+            $this->assertSame('', $out, 'no half-page bytes are written over already-sent output');
+        }
+
         // --- SETTINGS ROUND-TRIP -----------------------------------------------------------------
 
         public function testSettingsRoundTripThroughSanitizer(): void

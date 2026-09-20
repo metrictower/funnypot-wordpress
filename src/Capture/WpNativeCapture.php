@@ -226,9 +226,11 @@ final class WpNativeCapture
      * WITHOUT exiting, so the serve is unit-testable. The seam default cannot be a static-property
      * initializer (PHP forbids a closure there), so it is resolved here (mirrors settings()/post()).
      *
-     * The headers-already-sent guard lives on the production emit path only: if output has begun we must
-     * not emit a broken page, so we return without exit and WordPress renders normally (degrade-safe). A
-     * capturing test responder bypasses emit entirely, so the guard never blocks unit testing.
+     * The headers-already-sent guard runs on every path that actually emits: the production responder
+     * wired in Plugin::wireProviders() checks headers_sent() before ResponseEmitter::emit/exit (so a
+     * headers-already-sent request returns without emitting -> normal WordPress, no half-page), and this
+     * method's own fallback emit (used only when no responder is wired) checks it too. A capturing test
+     * responder does not emit at all, so the guard does not apply to it — the serve stays unit-testable.
      */
     private static function respond(FakeResponse $fake): void
     {
