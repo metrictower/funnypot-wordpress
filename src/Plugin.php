@@ -10,6 +10,7 @@ use Funnypot\WordPress\Admin\SettingsScreen;
 use Funnypot\WordPress\Capture\WpNativeCapture;
 use Funnypot\WordPress\Cli\HoneypotCommand;
 use Funnypot\WordPress\Geo\GeoIpRefresh;
+use Funnypot\WordPress\Http\ResponseEmitter;
 use Funnypot\WordPress\Log\ScanAbsorbingHitLogWriter;
 use Funnypot\WordPress\Log\WpdbHitLogWriter;
 use Funnypot\Core\Rules\RulesLocator;
@@ -240,6 +241,24 @@ final class Plugin
         };
         WpNativeCapture::$postProvider = static function () {
             return isset($_POST) ? $_POST : array();
+        };
+        // Bot-gated fake lockout (FP-0506). The responder emits the core lockout page at 200 then exits,
+        // preempting WordPress's own login re-render on an ALREADY-FAILED request (post-auth; no auth hook,
+        // no persistent lock). The headers-already-sent guard MUST live here, on the real emit path: if
+        // output has already begun when wp_login_failed fires, emitting would echo a half-page (plus
+        // "headers already sent" warnings) over it — a broken login page and a fingerprint tell. Guarded,
+        // it returns without emitting so WordPress renders normally (degrade-safe). The site-name provider
+        // is the public blog title (escaped by the skin); both degrade to a safe default when WordPress is
+        // not fully loaded.
+        WpNativeCapture::$responder = static function ($fake) {
+            if (function_exists('headers_sent') && headers_sent()) {
+                return; // output already started -> never emit a broken page; fall through to normal WP
+            }
+            ResponseEmitter::emit($fake, 200);
+            exit;
+        };
+        WpNativeCapture::$siteNameProvider = static function () {
+            return function_exists('get_bloginfo') ? (string) get_bloginfo('name') : '';
         };
     }
 

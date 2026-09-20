@@ -138,6 +138,40 @@ left uncaught on purpose (catching it needs `authenticate`, which would pull the
 Local intel only — the value is inspected for emptiness only, never stored, reflected, or sent to
 mainnet. Full real-`wp-login` end-to-end verification belongs to the FP-0497 harness (operator/CI-run).
 
+### Bot-gated fake lockout (FP-0506)
+
+After a failed login on the real `/wp-login.php`, serve the core fake-lockout page (vendored
+`WordpressSkin::renderLockout`, no core change) to a **suspected bot only** so it believes it tripped a
+rate-limiter. Default off; requires `realistic` or `taunt` response mode. Gated on a **bot signal**,
+**never** a plain failed-login count: the FP-0505 honeypot field tripped, **or** a conservative per-IP
+failed-login **velocity** (dedicated 60s counter, default `login_lockout_velocity` = 15, clamped
+`[5,240]`, on its own key so it works with `wp_native_capture` off). Provision with e.g. `wp option
+update honeypot_wp_settings --format=json '{"enabled":true,"response_mode":"realistic",
+"login_fake_lockout":true,"login_honeypot_field":true}'` — then assert:
+
+| Request | Expected | Meaning |
+| --- | --- | --- |
+| `POST /wp-login.php` with the decoy field **filled** (bad creds) | HTTP 200 `text/html` fake-lockout login page (*"Too many failed login attempts…N minutes"*) | a definitive bot signal shows the cosmetic lockout |
+| `POST /wp-login.php` bad creds at/over the velocity threshold (default 15/60s) | HTTP 200 fake-lockout page | brute-force shape shows the cosmetic lockout |
+| `POST /wp-login.php` a few ordinary bad-creds attempts (no decoy, below velocity) | WordPress's **normal** login-failed page | a real user who mistypes is never shown the lockout |
+| `POST /wp-login.php` **valid** creds afterwards (even from an IP that tripped velocity) | authenticated normally | the account is never locked — `wp_signon` re-runs fresh |
+
+**Never locks a real user — structural, not tuning:** the trigger is `wp_login_failed` (fires only
+*after* WordPress rejected the credentials) and the feature registers **no**
+`authenticate`/`wp_signon`/`login_redirect` hook, so the auth decision is out of scope; it writes **no
+persistent lock** (only the ephemeral velocity counter, read solely by this cosmetic gate); and the
+lockout is a **per-request cosmetic lie** — the next POST is evaluated fresh, so a correct password
+always authenticates (a false-positive velocity trip behind a shared NAT is harmless — it decorates one
+already-failed request and never gates the next). The countdown minutes + persona are seeded from
+`crc32(host|salt)` (same as the honeypot field), so the page is deterministic per deploy and stable on
+re-scan. Fingerprint-safe (FP-0491-vetted page — small 1–2 digit minutes, no `llar`/six-digit
+rule-id), no PII (submitted username/password/decoy value is never read into the page), degrade-safe
+(any render/emit fault, or output already sent, falls through to normal WordPress — never a 500).
+**Passive-signal ceiling:** the signals are passive — a bot that neither fills the field nor sustains
+the velocity is not shown the lockout, on purpose (the alternative would risk a real user). Full
+real-`wp-login` end-to-end verification (real `exit`, real 200 body) belongs to the FP-0497 harness
+(operator/CI-run).
+
 ### Deception corpus auto-update (FP-0502)
 
 Not exercised by this live suite — it is **default-off** and its trust/swap flow is covered by the

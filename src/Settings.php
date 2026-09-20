@@ -209,6 +209,21 @@ final class Settings
         // wp_native_capture (either can be armed alone); local intel only, never blocks a real login.
         // Off by default (inert).
         $d['login_honeypot_field'] = isset($r['login_honeypot_field']) ? (bool) $r['login_honeypot_field'] : false;
+        // Bot-gated fake lockout on the REAL login form (FP-0506): after a failed login, serve the core
+        // fake-lockout page to an ALREADY-SUSPECTED bot so it thinks it tripped a rate-limiter. NEVER on
+        // a plain failed-login count — only a bot signal (honeypot-field trip OR the conservative velocity
+        // below) arms it. Cosmetic and per-request: no persistent lock is written and the auth decision is
+        // untouched, so a real user is never locked out. Off by default (inert).
+        $d['login_fake_lockout'] = isset($r['login_fake_lockout']) ? (bool) $r['login_fake_lockout'] : false;
+        // Conservative per-IP failed-login velocity that arms the fake lockout (failures per 60s window).
+        // The default sits well above any human fat-finger rate; the floor of 5 stays harmless because the
+        // lockout is cosmetic (a false-positive trip never blocks the next correct password).
+        $d['login_lockout_velocity'] = self::clampInt(
+            isset($r['login_lockout_velocity']) ? $r['login_lockout_velocity'] : 15,
+            5,
+            240,
+            15
+        );
         // XML-RPC pingback shield (FP-0493): capture the attacker-chosen pingback source URI (the SSRF
         // target) and refuse it with WP's canonical fault WITHOUT fetching. Off by default (inert).
         // Separate from wp_native_capture because this one CHANGES the served response.
@@ -548,6 +563,18 @@ final class Settings
     public function loginHoneypotField()
     {
         return $this->data['login_honeypot_field'];
+    }
+
+    /** Bot-gated fake lockout on the real WP login: serve the core lockout page to a suspected bot (FP-0506). */
+    public function loginFakeLockout()
+    {
+        return $this->data['login_fake_lockout'];
+    }
+
+    /** Conservative per-IP failed-login velocity (failures / 60s window) that arms the fake lockout (FP-0506). */
+    public function loginLockoutVelocity()
+    {
+        return $this->data['login_lockout_velocity'];
     }
 
     public function seedSalt()

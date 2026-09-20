@@ -102,6 +102,11 @@ final class SettingsScreen
         self::checkbox($opt, 'login_honeypot_field', 'Invisible honeypot field on the real login form', $d['login_honeypot_field']);
         self::help('Injects a hidden decoy field into the real WordPress login form. A real user or browser never fills it; a credential-stuffing bot that fills every input does, so a non-empty submit is captured as a bot signal. Local intel only — never sent to mainnet. Never blocks or alters a real login. Independent of WP-native capture.');
 
+        echo '<tr><th colspan="2"><h2>Bot-gated fake lockout</h2></th></tr>';
+        self::checkbox($opt, 'login_fake_lockout', 'Show a fake lockout page to suspected bots on the real login', $d['login_fake_lockout']);
+        self::text($opt, 'login_lockout_velocity', 'Velocity threshold (failed logins per 60s that arms it)', $d['login_lockout_velocity']);
+        self::help('Shown ONLY to a suspected bot after a failed login — either the invisible honeypot field above was filled, or a per-IP failed-login rate well above any human (default 15 / 60s, min 5) was reached. It is NEVER shown on a plain failed-login count, so a real user who mistypes their password never sees it. It never actually locks an account: no persistent lock is written and the credential check is untouched, so a real user — or even a false-positive IP behind a shared address — always logs in on the next correct password. Cosmetic, per-request deception only; forced off in stealth/blocked and when the plugin is disabled (requires realistic or taunt response mode).');
+
         echo '<tr><th colspan="2"><h2>XML-RPC pingback shield</h2></th></tr>';
         self::checkbox($opt, 'wp_pingback_shield', 'Neutralize XML-RPC pingback SSRF (capture target + refuse)', $d['wp_pingback_shield']);
         self::help('Captures the attacker-supplied pingback target URL as local intel and returns the standard XML-RPC error WITHOUT fetching it, so this site cannot be used as an SSRF/DDoS pingback relay. Local intel only — the URL is never sent to mainnet. Changes what xmlrpc.php returns for pingback.ping only.');

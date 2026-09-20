@@ -152,6 +152,30 @@ that directory is not writable it falls back to `plugins_loaded` and raises an a
   the field **and** submits valid credentials succeeds, so `wp_login_failed` never fires and that (rare,
   non-target) attempt is not caught — catching it would need `authenticate`, which pulls the password
   into scope, deliberately not done.
+- **Bot-gated fake lockout (`login_fake_lockout`, off by default):** after a failed login on the
+  **real** login form, serves the core fake-lockout page (a believable *"too many attempts, wait N
+  minutes"* login screen — the same page as the dedicated box, from vendored core, no core change) to a
+  **suspected bot only**, so the attacker thinks it tripped a rate-limiter and wastes its session. It is
+  gated on a **bot signal**, **never** a plain failed-login count: either the invisible honeypot field
+  above was tripped (definitive), **or** a conservative per-IP failed-login **velocity** was reached (a
+  dedicated 60s counter, default **15/60s**, clamped `[5,240]`, on its own key so it works with
+  `wp_native_capture` off). Requires `realistic` or `taunt` response mode (forced off in
+  `stealth`/`blocked` and when the plugin is disabled); the countdown minutes and visual persona are
+  seeded from the same `crc32(host|salt)` as the honeypot field, so the page is deterministic per deploy
+  and stable on re-scan. **Never locks a real user — structurally, not by tuning:** it fires on
+  `wp_login_failed` (only *after* WordPress already rejected the credentials) and registers **no**
+  `authenticate`/`wp_signon`/`login_redirect` hook, so the credential decision is out of scope; it
+  writes **no persistent lock** (only the ephemeral counter, read solely by this cosmetic gate, never by
+  any auth path); and the "lockout" is a **per-request cosmetic lie** — the next login POST re-runs
+  `wp_signon` from scratch, so a correct password **always** authenticates, even for an IP that tripped
+  velocity behind a shared NAT/proxy. A real user never fills the hidden field and never reaches the
+  velocity, so never sees the page; even a false-positive velocity trip only decorates one
+  already-failed request. Fingerprint-safe (reuses the FP-0491-vetted page — small 1–2 digit minutes, no
+  `llar`/six-digit rule-id tell), no PII (the submitted username/password/decoy value is never read into
+  the page), and degrade-safe: any render/emit fault (or output already sent) falls through to normal
+  WordPress — it only ever *upgrades* a failed login, never a 500. *Ceiling:* the signals are passive —
+  a bot that neither fills the field nor sustains the velocity is not shown the lockout (by design; the
+  alternative would risk a real user).
 - **XML-RPC pingback shield (`wp_pingback_shield`, off by default):** neutralizes the classic
   `pingback.ping` SSRF / DDoS-reflection vector on a **real** WordPress site. It hooks WordPress's own
   `pingback_ping_source_uri` filter at priority 1 (before WP's `wp_http_validate_url`), captures a
