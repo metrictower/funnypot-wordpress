@@ -26,9 +26,10 @@ final class RealCoreEvaluatorTest extends TestCase
 {
     private function realEvaluator()
     {
-        // Compiling core's ~84k-line rules artifact spikes memory; the default 128M CLI limit is not
-        // enough. Raise it for this integration-flavoured test only.
-        @ini_set('memory_limit', '512M');
+        // Compiling core's compiled rules artifact spikes memory (it grew across core 0.6.x); the default
+        // 128M CLI limit is not enough, and 512M no longer fits the v0.6 corpus under patchwork
+        // instrumentation. Raise it for this integration-flavoured test only.
+        @ini_set('memory_limit', '1024M');
         $s = Settings::fromArray(array('enabled' => true), static function () {
             return null;
         });
