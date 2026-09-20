@@ -26,7 +26,10 @@ final class MuEntry
         }
         self::$booted = true;
 
-        if (class_exists('Funnypot\Core\\WordPress\\Plugin') && method_exists('Funnypot\Core\\WordPress\\Plugin', 'registerBefore')) {
+        // Guard on Plugin::class (Funnypot\WordPress\Plugin) so the guard and the call can never diverge —
+        // the earlier hard-coded 'Funnypot\Core\WordPress\Plugin' string was a nonexistent class, so the
+        // guard was always false and the mu BEFORE-position never mounted.
+        if (class_exists(Plugin::class) && method_exists(Plugin::class, 'registerBefore')) {
             Plugin::registerBefore();
         }
     }
