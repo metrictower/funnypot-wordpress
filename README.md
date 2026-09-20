@@ -156,12 +156,21 @@ that directory is not writable it falls back to `plugins_loaded` and raises an a
   `block` in the honeypot posture is a tell — eyes-open opt-in). Resolved from a **local** GeoIP DB.
 - **Reporting:** off by default; `mainnet_base_url` (scheme+host only) + `MAINNET_KEY` + `self_ips`
   (the operator's own egress, never reported).
+- **Deception corpus auto-update (data only):** off by default. `rules_autoupdate_enabled` +
+  `rules_channel` (`stable`/`beta`) + `rules_update_interval` (`hourly`/`twicedaily`/`daily`). A WP-cron
+  event pulls a newer **signed** detection corpus (nuclei/route/attack/param artifacts, templates,
+  fingerprints) using funnypot-core's rules-update engine — so new scanner coverage and decoys reach the
+  site without waiting for a manual plugin update. Engine **code** still updates the normal way (WP
+  plugin auto-update / `composer` bump); this ships **DATA only**. See
+  [Deception corpus auto-update](#deception-corpus-auto-update-data-only) below.
 
 ### wp-config.php constants (override the stored settings)
 
 ```php
 define('HONEYPOT_WP_MAINNET_BASE_URL', 'https://mainnet.example');  // scheme+host only
 define('HONEYPOT_WP_MAINNET_KEY', '…');                             // a sensor-tier key
+define('HONEYPOT_WP_RULES_AUTOUPDATE', true);                       // force corpus auto-update on/off
+define('HONEYPOT_WP_RULES_DIR', '/var/lib/honeypot-wp-rules');      // corpus data dir (see below)
 ```
 
 Reporting/checking are **inert without a key**. The single key is a mainnet **`sensor`**-tier key
@@ -202,6 +211,40 @@ define('DISABLE_WP_CRON', true);   // in wp-config.php
 */5 * * * * wp honeypot report-drain --path=/var/www/html >/dev/null 2>&1
 0   * * * * wp honeypot mirror-pull  --path=/var/www/html >/dev/null 2>&1
 ```
+
+The corpus auto-update rides the same `honeypot_wp_rules_pull` WP-cron event; with `DISABLE_WP_CRON`
+a `wp cron event run honeypot_wp_rules_pull` line on your chosen interval keeps it firing.
+
+## Deception corpus auto-update (data only)
+
+When `rules_autoupdate_enabled` is on, a WP-cron event (`honeypot_wp_rules_pull`, on the configured
+`hourly`/`twicedaily`/`daily` schedule, with a per-host jittered first run) runs funnypot-core's signed
+rules-update engine to fetch a newer detection **corpus** and hot-swap it into a local data dir the
+engine reads in preference to its bundled copy. This ships **DATA only** — the corpus, templates and
+fingerprints — never executable engine code (that stays on the plugin auto-update / `composer` track,
+and shipping code this way is wp.org-prohibited and would lose the array-literal guard below).
+
+- **Signed + verified before load.** Every fetched artifact is `require`d PHP, gated by the engine's
+  full trust chain **before** anything goes live: an ed25519 signature (public key vendored in
+  funnypot-core, never fetched) + per-file sha256 + a pure-array-literal validator proving each file is
+  `return [...]` data that cannot execute, plus a fetch-time fingerprint re-scan. A failed, unsigned or
+  tampered pull is **rejected** and the current corpus is kept — there is no partial or unverified load.
+- **Exec-free.** The fetch is `wp_remote_get` (no `curl`/`exec`/shell), so it works on locked-down
+  hosts. The target host is a fixed, pinned allow-list (the GitHub release hosts); the fetch is
+  HTTPS-only, redirects are re-validated per hop, and the response size and timeout are bounded.
+- **Fail-safe on a read-only host.** If the data dir cannot be created or written (a common shared-host
+  case), the cron tick logs and degrades — it never fatals — and the site keeps serving the bundled
+  corpus.
+- **Data dir.** Defaults to `wp-uploads/honeypot-wp-rules`. It holds `require`d PHP, so for
+  least-privilege set `HONEYPOT_WP_RULES_DIR` to a path **outside the web root** that the web user
+  cannot write. Single-site only in v1; on multisite the feature stays off (bundled corpus).
+- **Status.** Settings → Honeypot shows the live corpus source (`bundled`/`data-dir`), version and
+  last-applied/last-checked timestamps.
+
+> **Prerequisite (not live yet):** the `metrictower/funnypot-rules` distribution repo and its published
+> signing keys do not exist yet. Until they do, every pull fails signature verification and the corpus
+> stays on the bundled floor — which is why this feature ships **default-off**. The consumer wiring is
+> complete and tested; enabling it becomes useful once the distribution + keys are stood up.
 
 ## WP-CLI
 
@@ -284,8 +327,12 @@ bash bin/build.sh    # composer install --no-dev (bundle policy/core/mainnet-cli
 - A production local **GeoIP DB reader** — the `WpGeoIp` port + refresh cron are built; wiring a
   concrete DB-IP Lite MMDB reader is a data-distribution follow-up (the port fail-opens to `null`
   until then).
-- The reserved L6 local allow/deny overlay; runtime signed rule-update in the WP admin; multisite
-  network UI; wordpress.org SVN distribution.
+- The reserved L6 local allow/deny overlay; multisite network UI; wordpress.org SVN distribution.
+- **Signed corpus auto-update (FP-0502): wired, default-off.** The WP-cron consumer over core's
+  rules-update engine ships now (see [Deception corpus auto-update](#deception-corpus-auto-update-data-only)).
+  A live pull awaits the `metrictower/funnypot-rules` distribution repo + published signing keys, which
+  do not exist yet — until then a pull fail-safes to the bundled corpus. An admin "Check now" action and
+  `wp honeypot rules:update|status` WP-CLI subcommands are deferred follow-ups.
 
 ## Try it locally (Docker)
 

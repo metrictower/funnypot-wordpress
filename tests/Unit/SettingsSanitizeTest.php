@@ -56,6 +56,30 @@ final class SettingsSanitizeTest extends TestCase
         $this->assertSame('', $out['login_slug']);
     }
 
+    public function testRulesAutoUpdateKeysSurviveTheSanitizerRoundTrip(): void
+    {
+        // Absent from a submission => the missing checkbox means OFF, and channel/interval whitelist.
+        $off = SettingsSanitizer::sanitize(array());
+        $this->assertFalse($off['rules_autoupdate_enabled']);
+        $this->assertSame('stable', $off['rules_channel']);
+        $this->assertSame('daily', $off['rules_update_interval']);
+
+        // A valid submission round-trips through the shared normalizer.
+        $on = SettingsSanitizer::sanitize(array(
+            'rules_autoupdate_enabled' => '1',
+            'rules_channel' => 'beta',
+            'rules_update_interval' => 'hourly',
+        ));
+        $this->assertTrue($on['rules_autoupdate_enabled']);
+        $this->assertSame('beta', $on['rules_channel']);
+        $this->assertSame('hourly', $on['rules_update_interval']);
+
+        // Junk is whitelisted back to safe defaults.
+        $junk = SettingsSanitizer::sanitize(array('rules_channel' => 'x', 'rules_update_interval' => 'weekly'));
+        $this->assertSame('stable', $junk['rules_channel']);
+        $this->assertSame('daily', $junk['rules_update_interval']);
+    }
+
     public function testGoodLoginSlugIsSanitizedAndKept(): void
     {
         $out = SettingsSanitizer::sanitize(array(

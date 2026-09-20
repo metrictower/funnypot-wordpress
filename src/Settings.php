@@ -34,6 +34,9 @@ final class Settings
     const CONST_BASE_URL = 'HONEYPOT_WP_MAINNET_BASE_URL';
     const CONST_KEY      = 'HONEYPOT_WP_MAINNET_KEY';
 
+    /** wp-config override for the deception-corpus auto-update toggle (FP-0502). */
+    const CONST_RULES_AUTOUPDATE = 'HONEYPOT_WP_RULES_AUTOUPDATE';
+
     /**
      * WP public + private query vars a login slug must never collide with (FP-0490). Re-derived from
      * WP core's WP::$public_query_vars / WP::$private_query_vars — NOT vendored from any plugin. A slug
@@ -273,6 +276,22 @@ final class Settings
             'score-modifier'
         );
         $d['geoip_refresh_interval_secs'] = self::clampInt(isset($r['geoip_refresh_interval_secs']) ? $r['geoip_refresh_interval_secs'] : 2592000, 86400, 31536000, 2592000);
+
+        // Deception-corpus auto-update (FP-0502). DATA only — engine code still updates via plugin
+        // auto-update / composer. OFF by default: a live pull also needs the funnypot-rules
+        // distribution + signing keys to exist, and until then a pull fail-safes to the bundled floor.
+        $d['rules_autoupdate_enabled'] = isset($r['rules_autoupdate_enabled']) ? (bool) $r['rules_autoupdate_enabled'] : false;
+        $d['rules_channel'] = self::whitelist(
+            isset($r['rules_channel']) ? (string) $r['rules_channel'] : 'stable',
+            array('stable', 'beta'),
+            'stable'
+        );
+        // Restricted to WP's built-in schedules so no cron_schedules filter is needed.
+        $d['rules_update_interval'] = self::whitelist(
+            isset($r['rules_update_interval']) ? (string) $r['rules_update_interval'] : 'daily',
+            array('hourly', 'twicedaily', 'daily'),
+            'daily'
+        );
 
         return $d;
     }
@@ -582,6 +601,30 @@ final class Settings
     public function geoipRefreshIntervalSecs()
     {
         return $this->data['geoip_refresh_interval_secs'];
+    }
+
+    // --- deception-corpus auto-update (FP-0502) ---
+
+    /** Off by default; a wp-config constant (HONEYPOT_WP_RULES_AUTOUPDATE) overrides the stored toggle. */
+    public function rulesAutoUpdateEnabled()
+    {
+        $env = call_user_func($this->constResolver, self::CONST_RULES_AUTOUPDATE);
+        if ($env !== null) {
+            return (bool) $env;
+        }
+
+        return $this->data['rules_autoupdate_enabled'];
+    }
+
+    public function rulesChannel()
+    {
+        return $this->data['rules_channel'];
+    }
+
+    /** A WP built-in schedule name: hourly | twicedaily | daily. */
+    public function rulesUpdateInterval()
+    {
+        return $this->data['rules_update_interval'];
     }
 
     // --- mainnet address + key (env-constant override wins; D1/D2) ---
