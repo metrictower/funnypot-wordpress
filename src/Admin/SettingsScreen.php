@@ -110,6 +110,13 @@ final class SettingsScreen
         self::select($opt, 'country_posture', 'Country posture', $d['country_posture'], array('off' => 'off', 'deny_list' => 'deny list', 'allow_list' => 'allow list (stricter, higher FP)'));
         self::select($opt, 'country_action', 'Country action', $d['country_action'], array('score-modifier' => 'score modifier (default)', 'deceive' => 'deceive', 'block' => 'block (a tell — eyes-open opt-in)'));
 
+        echo '<tr><th colspan="2"><h2>Deception corpus auto-update</h2></th></tr>';
+        self::checkbox($opt, 'rules_autoupdate_enabled', 'Auto-update the deception corpus (data only)', $d['rules_autoupdate_enabled']);
+        self::select($opt, 'rules_channel', 'Update channel', $d['rules_channel'], array('stable' => 'stable', 'beta' => 'beta'));
+        self::select($opt, 'rules_update_interval', 'Check interval', $d['rules_update_interval'], array('hourly' => 'hourly', 'twicedaily' => 'twice daily', 'daily' => 'daily'));
+        self::help('Pulls new signed detection DATA (corpus, templates, fingerprints) on a schedule using the engine\'s signature-verified rules-update (ed25519 + per-file sha256 + array-literal validation before load; exec-free). Engine CODE still updates via the normal plugin auto-update / composer bump. Off by default. Single-site only in v1. A failed, unsigned or tampered pull is rejected and the current/bundled corpus is kept.');
+        self::rulesStatusRow();
+
         echo '<tr><th colspan="2"><h2>Reporting</h2></th></tr>';
         self::checkbox($opt, 'report_enabled', 'Enable reporting', $d['report_enabled']);
         self::text($opt, 'mainnet_base_url', 'Mainnet base URL (scheme+host only)', $d['mainnet_base_url']);
@@ -165,6 +172,31 @@ final class SettingsScreen
     {
         $name = $opt . '[' . $key . ']';
         echo '<tr><th scope="row">' . self::esc($label) . '</th><td><textarea name="' . self::esc($name) . '" rows="3" class="large-text">' . self::esc((string) $value) . '</textarea></td></tr>';
+    }
+
+    /** A read-only status line for the corpus auto-update: source, version, last-applied/last-checked. */
+    private static function rulesStatusRow()
+    {
+        $line = 'Corpus source: bundled (no update applied yet).';
+        try {
+            $svc = Plugin::services();
+            if (isset($svc['rules']) && $svc['rules'] !== null) {
+                $st = $svc['rules']->status();
+                if ($st !== null) {
+                    $version = $st->version !== null ? $st->version : 'n/a';
+                    $line = sprintf(
+                        'Corpus source: %s · version: %s · last applied: %s · last checked: %s',
+                        $st->source,
+                        $version,
+                        $st->appliedAt !== null ? $st->appliedAt : 'never',
+                        $st->checkedAt !== null ? $st->checkedAt : 'never'
+                    );
+                }
+            }
+        } catch (\Throwable $e) {
+            // fall back to the bundled default line
+        }
+        echo '<tr><td colspan="2"><p class="description"><strong>Status:</strong> ' . self::esc($line) . '</p></td></tr>';
     }
 
     private static function help($text)

@@ -89,6 +89,17 @@ with e.g. `wp option update honeypot_wp_settings --format=json
 It is opt-in because a block page advertises a defense (a fingerprint tradeoff vs the stay-hidden
 default). `allow` and the relocated-login `safe_paths` are left intact — no operator lockout.
 
+### Deception corpus auto-update (FP-0502)
+
+Not exercised by this live suite — it is **default-off** and its trust/swap flow is covered by the
+unit suite against the real vendored core (`tests/Unit/RulesAutoUpdateTest.php`,
+`tests/Unit/WpRemoteRulesFetcherTest.php`, `tests/Unit/RulesCronWiringTest.php`) with a test-keyed
+verifier + a network-free fetcher, so no network or signing keys are needed to test it. A live
+end-to-end pull additionally requires the `metrictower/funnypot-rules` distribution repo + published
+ed25519 signing keys, which do not exist yet; until then a pull fail-safes to the bundled corpus. The
+plugin ships **DATA only** via this path — engine **code** still updates via WP plugin auto-update /
+`composer`. See the README's "Deception corpus auto-update" section for the operator-facing details.
+
 ## Environment notes
 
 - **PHP 8.2** in the container (`.wp-env.json` `phpVersion`) — a version WordPress 6.5 fully supports.

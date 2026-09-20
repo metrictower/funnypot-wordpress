@@ -244,6 +244,43 @@ final class SettingsTest extends TestCase
         $this->assertSame(array('malicious', 'critical'), $rep['block_verdicts']);
     }
 
+    // --- deception-corpus auto-update (FP-0502) --------------------------------------------------
+
+    public function testRulesAutoUpdateDefaultsOffWithSaneChannelAndInterval(): void
+    {
+        $s = Settings::fromArray(array(), $this->noConsts());
+        $this->assertFalse($s->rulesAutoUpdateEnabled()); // OFF by default
+        $this->assertSame('stable', $s->rulesChannel());
+        $this->assertSame('daily', $s->rulesUpdateInterval());
+    }
+
+    public function testRulesChannelAndIntervalWhitelisted(): void
+    {
+        $s = Settings::fromArray(array('rules_channel' => 'nope', 'rules_update_interval' => 'weekly'), $this->noConsts());
+        $this->assertSame('stable', $s->rulesChannel());
+        $this->assertSame('daily', $s->rulesUpdateInterval());
+
+        $s2 = Settings::fromArray(array('rules_channel' => 'beta', 'rules_update_interval' => 'hourly'), $this->noConsts());
+        $this->assertSame('beta', $s2->rulesChannel());
+        $this->assertSame('hourly', $s2->rulesUpdateInterval());
+    }
+
+    public function testRulesAutoUpdateEnabledRoundTrips(): void
+    {
+        $s = Settings::fromArray(array('rules_autoupdate_enabled' => true), $this->noConsts());
+        $this->assertTrue($s->rulesAutoUpdateEnabled());
+        $this->assertTrue($s->toArray()['rules_autoupdate_enabled']);
+    }
+
+    public function testRulesAutoUpdateEnvConstantOverridesStoredToggle(): void
+    {
+        $resolver = static function ($name) {
+            return $name === Settings::CONST_RULES_AUTOUPDATE ? '1' : null;
+        };
+        $s = Settings::fromArray(array('rules_autoupdate_enabled' => false), $resolver);
+        $this->assertTrue($s->rulesAutoUpdateEnabled(), 'a wp-config constant forces the toggle on');
+    }
+
     // --- login relocation (FP-0490) --------------------------------------------------------------
 
     public function testSanitizeSlugCleansMixedInput(): void

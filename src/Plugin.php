@@ -12,8 +12,12 @@ use Funnypot\WordPress\Cli\HoneypotCommand;
 use Funnypot\WordPress\Geo\GeoIpRefresh;
 use Funnypot\WordPress\Log\ScanAbsorbingHitLogWriter;
 use Funnypot\WordPress\Log\WpdbHitLogWriter;
+use Funnypot\Core\Rules\RulesLocator;
+use Funnypot\Core\Rules\RulesUpdater;
 use Funnypot\WordPress\Mirror\BlacklistMirror;
 use Funnypot\WordPress\Report\WpdbReportQueue;
+use Funnypot\WordPress\Rules\RulesAutoUpdate;
+use Funnypot\WordPress\Rules\WpRemoteRulesFetcher;
 use Funnypot\WordPress\Report\WpRemotePostTransport;
 use Funnypot\WordPress\Report\WpReporterBridge;
 use Funnypot\WordPress\Reputation\WpCache;
@@ -32,6 +36,7 @@ final class Plugin
     const HOOK_WARMER = 'honeypot_wp_warmer_drain';
     const HOOK_MIRROR_PULL = 'honeypot_wp_mirror_pull';
     const HOOK_GEOIP_REFRESH = 'honeypot_wp_geoip_refresh';
+    const HOOK_RULES_PULL = 'honeypot_wp_rules_pull';
 
     /** @var string the main plugin file */
     private static $file = '';
@@ -43,6 +48,11 @@ final class Plugin
     {
         self::$file = (string) $file;
         self::wireProviders();
+
+        // READ seam for the auto-updated corpus (FP-0502): point rule resolution at the pulled data
+        // dir BEFORE the engine is constructed (it is built lazily at hook time, well after this).
+        // Without it a cron pull would write a corpus the engine never serves.
+        self::maybeUseRulesDataDir();
 
         // BEFORE position fallback (when the mu-shim is absent) + the FALLBACK 404 position.
         add_action('plugins_loaded', array(Interceptor::class, 'runBefore'), 0);
@@ -79,6 +89,11 @@ final class Plugin
         add_action('switch_theme', array(__CLASS__, 'refreshInstalledSet'));
         add_action('upgrader_process_complete', array(__CLASS__, 'refreshInstalledSet'));
 
+        // Reconcile the rules-pull schedule when the option changes, so toggling auto-update on/off (or
+        // changing the interval) takes effect without a reactivation.
+        add_action('add_option_' . self::OPTION, array(__CLASS__, 'reconcileRulesSchedule'));
+        add_action('update_option_' . self::OPTION, array(__CLASS__, 'reconcileRulesSchedule'));
+
         register_activation_hook(self::$file, array(__CLASS__, 'activate'));
         register_deactivation_hook(self::$file, array(__CLASS__, 'deactivate'));
 
@@ -93,7 +108,32 @@ final class Plugin
     public static function registerBefore()
     {
         self::wireProviders();
+        // Same READ seam as register() (FP-0502): the mu path builds the engine at muplugins_loaded, so
+        // the data dir must be pointed at here too, before that hook fires.
+        self::maybeUseRulesDataDir();
         add_action('muplugins_loaded', array(Interceptor::class, 'runBefore'), 0);
+    }
+
+    /**
+     * Point rule resolution at the auto-updated data dir when the feature is on (FP-0502). Gating on
+     * the toggle keeps disabling the feature a clean off-switch back to the bundled corpus; RulesLocator
+     * self-heals to the bundled floor anyway when the data dir is missing or empty. Single-site only in
+     * v1 — on multisite the data dir is per-blog while the engine data is global, so leave it unhandled
+     * (bundled floor), mirroring the login-relocation v1 posture.
+     */
+    private static function maybeUseRulesDataDir()
+    {
+        try {
+            $multisite = function_exists('is_multisite') && is_multisite();
+            if ($multisite) {
+                return;
+            }
+            if (self::settings()->rulesAutoUpdateEnabled()) {
+                RulesLocator::useDataDir(self::rulesDir());
+            }
+        } catch (\Throwable $ignored) {
+            // never let a resolution-dir choice fault the boot path (fail-safe to the bundled floor)
+        }
     }
 
     /** Wire the Interceptor seams to real WP primitives (idempotent). */
@@ -347,6 +387,22 @@ final class Plugin
             return $clock->now();
         });
 
+        // Corpus auto-update (FP-0502): a thin cron service over core's signed RulesUpdater. The updater
+        // is built through a factory so the exec-free WP fetcher + channel are wired here while the
+        // service stays free of core construction (and unit-testable with an injected updater).
+        $rulesFactory = static function ($dir) use ($s) {
+            return new RulesUpdater(
+                (string) $dir,
+                $s->rulesChannel(),
+                null,
+                RulesAutoUpdate::REPO_BASE_URL,
+                new WpRemoteRulesFetcher()
+            );
+        };
+        $rules = new RulesAutoUpdate($s, self::rulesDir(), $rulesFactory, $store->backend(), static function () use ($clock) {
+            return $clock->now();
+        });
+
         return array(
             'settings' => $s,
             'store' => $store,
@@ -356,6 +412,7 @@ final class Plugin
             'geoip' => $geoip,
             'hitlog' => $hitlog,
             'sensor_id' => $sensorId,
+            'rules' => $rules,
         );
     }
 
@@ -450,7 +507,7 @@ final class Plugin
     public static function deactivate()
     {
         Installer::deactivate(self::$file);
-        foreach (array(self::HOOK_REPORT_DRAIN, self::HOOK_WARMER, self::HOOK_MIRROR_PULL, self::HOOK_GEOIP_REFRESH) as $hook) {
+        foreach (self::cronHooks() as $hook) {
             $ts = function_exists('wp_next_scheduled') ? wp_next_scheduled($hook) : false;
             if ($ts && function_exists('wp_unschedule_event')) {
                 wp_unschedule_event($ts, $hook);
@@ -460,12 +517,25 @@ final class Plugin
 
     // --- cron ------------------------------------------------------------------------------------
 
+    /** Every cron hook this plugin owns — the set deactivate() clears. */
+    public static function cronHooks()
+    {
+        return array(
+            self::HOOK_REPORT_DRAIN,
+            self::HOOK_WARMER,
+            self::HOOK_MIRROR_PULL,
+            self::HOOK_GEOIP_REFRESH,
+            self::HOOK_RULES_PULL,
+        );
+    }
+
     private static function registerCron()
     {
         add_action(self::HOOK_REPORT_DRAIN, array(__CLASS__, 'cronReportDrain'));
         add_action(self::HOOK_WARMER, array(__CLASS__, 'cronWarmer'));
         add_action(self::HOOK_MIRROR_PULL, array(__CLASS__, 'cronMirrorPull'));
         add_action(self::HOOK_GEOIP_REFRESH, array(__CLASS__, 'cronGeoipRefresh'));
+        add_action(self::HOOK_RULES_PULL, array(__CLASS__, 'cronRulesPull'));
     }
 
     private static function scheduleEvents()
@@ -479,6 +549,29 @@ final class Plugin
         }
         if (!wp_next_scheduled(self::HOOK_GEOIP_REFRESH)) {
             wp_schedule_event($now, 'daily', self::HOOK_GEOIP_REFRESH);
+        }
+        // Corpus auto-update (FP-0502): schedule only when the toggle is on, at the configured
+        // interval, with a per-host jittered first run so a fleet does not stampede the release host.
+        $interval = RulesAutoUpdate::desiredSchedule(self::settings());
+        if ($interval !== null && !wp_next_scheduled(self::HOOK_RULES_PULL)) {
+            $jitter = (int) abs(crc32((string) gethostname()) % 3600);
+            wp_schedule_event($now + $jitter, $interval, self::HOOK_RULES_PULL);
+        }
+    }
+
+    /**
+     * Reschedule/unschedule the rules-pull when the settings option changes: clear the existing event
+     * and re-add it only if the toggle is on (picking up an interval change). The other events are
+     * re-added idempotently. Integration-level; guarded so an option save never fatals.
+     */
+    public static function reconcileRulesSchedule()
+    {
+        $ts = function_exists('wp_next_scheduled') ? wp_next_scheduled(self::HOOK_RULES_PULL) : false;
+        if ($ts && function_exists('wp_unschedule_event')) {
+            wp_unschedule_event($ts, self::HOOK_RULES_PULL);
+        }
+        if (function_exists('wp_schedule_event')) {
+            self::scheduleEvents();
         }
     }
 
@@ -512,6 +605,14 @@ final class Plugin
         }
     }
 
+    public static function cronRulesPull()
+    {
+        $svc = self::services();
+        if (isset($svc['rules']) && $svc['rules'] !== null) {
+            $svc['rules']->run();
+        }
+    }
+
     // --- paths -----------------------------------------------------------------------------------
 
     private static function stateDir()
@@ -529,6 +630,26 @@ final class Plugin
     private static function geoDbPath()
     {
         return self::stateDir() . '/dbip-country-lite.mmdb';
+    }
+
+    /**
+     * Where the auto-updated corpus is written and read from (FP-0502). Defaults to an uploads subdir
+     * the plugin already knows how to create; override with the HONEYPOT_WP_RULES_DIR constant to place
+     * it OUTSIDE the web root — the least-privilege posture, since the dir holds require'd PHP.
+     */
+    private static function rulesDir()
+    {
+        if (defined('HONEYPOT_WP_RULES_DIR')) {
+            return (string) constant('HONEYPOT_WP_RULES_DIR');
+        }
+        if (function_exists('wp_upload_dir')) {
+            $up = wp_upload_dir();
+            if (is_array($up) && isset($up['basedir'])) {
+                return $up['basedir'] . '/honeypot-wp-rules';
+            }
+        }
+
+        return sys_get_temp_dir() . '/honeypot-wp-rules';
     }
 
     private static function geoFeedUrl()
