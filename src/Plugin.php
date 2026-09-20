@@ -227,6 +227,20 @@ final class Plugin
         WpNativeCapture::$serverProvider = static function () {
             return isset($_SERVER) ? $_SERVER : array();
         };
+        // Login honeypot field (FP-0505). The host is the canonical server-side site host (home_url),
+        // request-invariant and un-spoofable, so the GET render name equals the POST submit name; NOT
+        // the client Host header. Both seams are function_exists/isset-guarded -> degrade to empty (the
+        // render/detect then no-op) if WP is not fully loaded.
+        WpNativeCapture::$hostProvider = static function () {
+            if (!function_exists('home_url') || !function_exists('wp_parse_url')) {
+                return '';
+            }
+
+            return (string) (wp_parse_url(home_url(), PHP_URL_HOST) ?: '');
+        };
+        WpNativeCapture::$postProvider = static function () {
+            return isset($_POST) ? $_POST : array();
+        };
     }
 
     /**

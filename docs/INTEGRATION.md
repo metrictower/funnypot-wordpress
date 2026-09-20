@@ -115,6 +115,29 @@ with e.g. `wp option update honeypot_wp_settings --format=json
 It is opt-in because a block page advertises a defense (a fingerprint tradeoff vs the stay-hidden
 default). `allow` and the relocated-login `safe_paths` are left intact — no operator lockout.
 
+### Login honeypot field (FP-0505)
+
+An invisible decoy `<input>` injected into WordPress's **own** login form (the `login_form` action —
+the plugin does not override `/wp-login.php`), plus a passive detector on the login POST. Default off;
+independent of `wp_native_capture`. Provision with e.g. `wp option update honeypot_wp_settings
+--format=json '{"enabled":true,"login_honeypot_field":true}'` — then assert:
+
+| Request | Expected | Meaning |
+| --- | --- | --- |
+| `GET /wp-login.php` | the real WP login form with an extra `display:none` field (`tabindex=-1`, `aria-hidden`, `autocomplete=off`; an ordinary contact-field name) | the decoy is injected additively; a real user/browser never fills it |
+| `POST /wp-login.php` with the decoy field **filled** (bad creds) | login fails as normal; one local hit row, reason `login_honeypot_field` | a scripted bot that fills every input is flagged |
+| `POST /wp-login.php` with the decoy field **empty/absent** (bad creds) | login fails as normal; **no** honeypot hit | zero false positives for real users |
+| `POST /wp-login.php` valid creds (decoy empty) | authenticated normally | the login is never blocked or altered |
+
+The field name is derived per-site from `crc32(host|salt)` (server-side `home_url()` host, not the
+client `Host` header), so a bot's GET-render name and POST-submit name always agree, the name differs
+per install (no fleet constant), and a spoofed `Host` header cannot shift it. **Passive-signal
+ceiling:** detection hooks `wp_login_failed` (password-free), so a bot that fills the decoy **and**
+submits valid credentials succeeds without firing that hook and is not caught — a rare, non-target case
+left uncaught on purpose (catching it needs `authenticate`, which would pull the password into scope).
+Local intel only — the value is inspected for emptiness only, never stored, reflected, or sent to
+mainnet. Full real-`wp-login` end-to-end verification belongs to the FP-0497 harness (operator/CI-run).
+
 ### Deception corpus auto-update (FP-0502)
 
 Not exercised by this live suite — it is **default-off** and its trust/swap flow is covered by the
