@@ -26,6 +26,6 @@ if (is_file($honeypot_wp_autoload)) {
 
 // Wiring (hooks, admin menu, WP-CLI, activation) is registered by the bootstrap, which is a
 // no-op if the autoloader / classes are unavailable — degrade-safe by construction (SF-4).
-if (class_exists(\Honeypot\WP\Plugin::class)) {
-    \Honeypot\WP\Plugin::register(__FILE__);
+if (class_exists(\Funnypot\WordPress\Plugin::class)) {
+    \Funnypot\WordPress\Plugin::register(__FILE__);
 }
