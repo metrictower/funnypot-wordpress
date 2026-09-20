@@ -132,7 +132,10 @@ that directory is not writable it falls back to `plugins_loaded` and raises an a
   IP per channel per 60s window exactly like the enumeration absorber, so a single `system.multicall`
   with N sub-calls (N `xmlrpc_call` fires) writes at most one hit row — the burst is captured as the
   per-IP aggregate count (velocity), not as N rows. Every callback is degrade-safe: a capture fault
-  never breaks WP login/xmlrpc/REST.
+  never breaks WP login/xmlrpc/REST. The hit-store write itself is degrade-safe too — a missing or
+  broken plugin table makes the `$wpdb` write a silent no-op (wpdb's own error output is suppressed
+  around every request/cron-facing write), so a raw "WordPress database error" can never be echoed
+  onto a page as a fingerprint tell; the write is simply skipped.
 - **Login honeypot field (`login_honeypot_field`, off by default):** injects an invisible decoy
   `<input>` into WordPress's **own** login form via the `login_form` action (the plugin does **not**
   override `/wp-login.php`), and passively flags a login POST that arrives with that field non-empty —
