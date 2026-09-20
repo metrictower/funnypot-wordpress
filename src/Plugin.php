@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Funnypot\WordPress;
 
+use Funnypot\WordPress\Admin\IntelDashboard;
 use Funnypot\WordPress\Admin\Notices;
 use Funnypot\WordPress\Admin\SettingsScreen;
 use Funnypot\WordPress\Capture\WpNativeCapture;
@@ -52,6 +53,7 @@ final class Plugin
         WpNativeCapture::register();
 
         add_action('admin_menu', array(SettingsScreen::class, 'register'));
+        add_action('admin_menu', array(IntelDashboard::class, 'register'));
         add_action('admin_init', array(SettingsScreen::class, 'registerSetting'));
         add_action('admin_notices', array(__CLASS__, 'renderNotices'));
 

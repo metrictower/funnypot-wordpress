@@ -121,6 +121,27 @@ define('HONEYPOT_WP_MAINNET_KEY', '…');                             // a senso
 Reporting/checking are **inert without a key**. The single key is a mainnet **`sensor`**-tier key
 carrying both report rights and an escalation-check quota (O2).
 
+## Local intel dashboard
+
+**Settings → Honeypot Intel** is a read-only view of what the honeypot has caught locally (the
+Wordfence "Live Traffic" analog — the operator's reason to install). It renders the `honeypot_wp_hits`
+store and local state: summary tiles (total events, events in the last 24h, report-queue depth,
+blacklist-mirror age), a paginated recent-events table (time, IP, method, path, action, reason,
+status), top attacker IPs over the last 24h, and the `mass_plugin_scan` rollups. When WP-native
+capture is on, the login/xmlrpc/REST rows appear here too.
+
+- `manage_options`-gated and **read-only**: it makes no state changes, so it carries no nonce (the
+  guards are the capability gate + `absint`-clamped pagination). The recent-events list can be filtered
+  by a fixed action whitelist (`log`/`deceive`/`block`).
+- **No external I/O on render** — only local `$wpdb` and state reads. It never drains the reporter or
+  triggers a GeoIP/blacklist refresh.
+- **Escapes every value at output.** IP/path/User-Agent are attacker-controlled; they render only as
+  escaped text-node content, never into an HTML attribute.
+- Top-IP **User-Agent** and **current-window velocity** are a best-effort enrichment from the per-IP
+  aggregate slots (recent-window; an older IP shows "—"). The aggregate `count` is a current-60s-window
+  velocity, not a cumulative total, and is labelled as such. **Country** shows "—" until a local GeoIP
+  reader is wired (none is today); it is never a network lookup.
+
 ### WP-Cron caveat
 
 WP-Cron only fires on traffic, so on a low-traffic site the report drain, the O1 blacklist-mirror
