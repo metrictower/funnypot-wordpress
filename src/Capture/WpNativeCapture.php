@@ -5,8 +5,13 @@ declare(strict_types=1);
 namespace Funnypot\WordPress\Capture;
 
 use Funnypot\Core\RequestContext;
+use Funnypot\Core\Support\Chrome\PageSlots;
+use Funnypot\Core\Support\Chrome\WordpressSkin;
 use Funnypot\Core\Support\LoginDecoyField;
+use Funnypot\Core\Support\VisualPersona;
+use Funnypot\Policy\FakeResponse;
 use Funnypot\WordPress\EvaluatorConfig;
+use Funnypot\WordPress\Http\ResponseEmitter;
 use Funnypot\WordPress\RequestFactory;
 use Funnypot\WordPress\Settings;
 
@@ -64,6 +69,10 @@ final class WpNativeCapture
     public static $hostProvider;
     /** @var callable():array the submitted form ($_POST) */
     public static $postProvider;
+    /** @var callable(FakeResponse):void emits the fake lockout response; production default exits after emit */
+    public static $responder;
+    /** @var callable():string the public site title for the fake lockout page (get_bloginfo('name')) */
+    public static $siteNameProvider;
 
     /** Register the WP-native hooks. Gating happens inside each callback at fire time. */
     public static function register()
@@ -104,9 +113,10 @@ final class WpNativeCapture
             // Honeypot detection runs FIRST so that when both toggles are on and the field is tripped,
             // the high-confidence 'login_honeypot_field' reason owns the durable rollup row (the gate
             // writes the row on the first fire per IP/channel/window); the native reason then lands in
-            // the aggregate sample only.
+            // the aggregate sample only. It also surfaces the trip boolean for the fake-lockout gate.
+            $honeypotTripped = false;
             if ($s->loginHoneypotField()) {
-                self::detectLoginHoneypot($s);
+                $honeypotTripped = self::detectLoginHoneypot($s);
             }
             if ($s->wpNativeCapture()) {
                 $known = function_exists('username_exists') && username_exists((string) $username);
@@ -115,6 +125,21 @@ final class WpNativeCapture
                     self::capture($s, 'login', 'login_fail_known_user', '/wp-login.php', true);
                 } else {
                     self::capture($s, 'login', 'login_failed', '/wp-login.php');
+                }
+            }
+
+            // Bot-gated fake lockout (FP-0506). Evaluated LAST, after the capture writes, so the intel
+            // row is persisted before any exit. It is served ONLY to a suspected bot — the honeypot field
+            // was tripped, or a conservative per-IP failed-login velocity was reached — NEVER on a plain
+            // failed-login count, so a real user never sees it. The velocity counter is measurement only:
+            // it lives on its own key, is read solely by this cosmetic gate, and no auth path consults it.
+            // No persistent lock is written and no authenticate/wp_signon hook exists, so the credential
+            // decision is untouched and the next correct password always authenticates (even for an IP that
+            // tripped velocity behind a shared NAT). Any render/emit fault is swallowed below -> normal WP.
+            if ($s->loginFakeLockout()) {
+                $velocityHit = self::lockoutVelocityHit($s);
+                if ($s->responseModeServesDecoys() && ($honeypotTripped || $velocityHit)) {
+                    self::serveFakeLockout($s); // renders + emits + exits; returns only if it declined/faulted
                 }
             }
         } catch (\Throwable $ignored) {
@@ -126,19 +151,110 @@ final class WpNativeCapture
      * Passive detection for the login honeypot field: read the ONE decoy key from the submitted form
      * and, if a scripted bot filled it, record a high-confidence signal. The value is inspected for
      * emptiness only — never persisted or reflected — and the password is never touched (only the known
-     * decoy key is read). Called from within onLoginFailed's try/catch.
+     * decoy key is read). Called from within onLoginFailed's try/catch. Returns whether the field was
+     * tripped so the fake-lockout gate can reuse the boolean without re-reading the form.
      */
-    private static function detectLoginHoneypot(Settings $s)
+    private static function detectLoginHoneypot(Settings $s): bool
     {
         $name = self::decoyFieldName($s);
         if ($name === '') {
-            return;
+            return false;
         }
         $post = self::post();
         $v = isset($post[$name]) ? $post[$name] : '';
         if (is_string($v) && trim($v) !== '') {
             self::capture($s, 'login', 'login_honeypot_field', '/wp-login.php');
+
+            return true;
         }
+
+        return false;
+    }
+
+    /**
+     * Signal 2 for the fake-lockout gate: a conservative per-IP failed-login velocity. Bumps a DEDICATED
+     * counter (its own key, decoupled from the wp_native_capture counter so it works with that toggle off)
+     * over a 60s rolling window and reports whether the count reached the configured threshold. This is
+     * measurement only — the counter is read by nothing on the auth path and enforces nothing. No IP or
+     * store => no signal (fall through to normal WP).
+     */
+    private static function lockoutVelocityHit(Settings $s): bool
+    {
+        $ip = RequestFactory::clientIp(self::server(), $s);
+        if ($ip === '') {
+            return false;
+        }
+        $deps = self::deps();
+        $store = isset($deps['store']) ? $deps['store'] : null;
+        if ($store === null) {
+            return false;
+        }
+
+        $n = $store->incr('login_lockout:' . $ip, self::WINDOW_SECS);
+
+        return $n >= $s->loginLockoutVelocity();
+    }
+
+    /**
+     * Render the vendored core fake-lockout page and emit it at 200 text/html in place of WordPress's own
+     * login re-render, then exit. Reuses WordpressSkin::renderLockout unchanged (no core edit). The seed
+     * is crc32(seedFor) = host|salt — the SAME per-deploy seed the FP-0505 decoy field name uses — so the
+     * "N minutes" and the visual persona are deterministic per deploy and stable on re-scan, with no clock
+     * or state read. Every early-out (headers already sent, no host) falls through to normal WordPress; the
+     * caller's try/catch swallows any render/emit fault, so this only ever UPGRADES an already-failed
+     * request and never faults it (never a 500, which would itself be a tell).
+     */
+    private static function serveFakeLockout(Settings $s): void
+    {
+        list($r, $c) = self::loginRequestAndConfig($s);
+        if ($r === null) {
+            return; // no host -> no-op (fall through to normal WP)
+        }
+        $seed = crc32($c->seedFor($r));
+        $persona = VisualPersona::fromSeed($seed);
+        $slots = PageSlots::fromArray(array('app_name' => self::siteName()));
+        $escapedPath = self::escAttr('/wp-login.php'); // trusted literal, pre-escaped for the skin
+        $taunt = ($s->coreResponseStyle() === 'taunt');
+        $html = (new WordpressSkin())->renderLockout($slots, $persona, $escapedPath, $seed, $taunt, '/wp-login.php');
+
+        self::respond(new FakeResponse(200, array(), $html, 'text/html; charset=UTF-8'));
+    }
+
+    /**
+     * Emit the fake lockout response. The production path (seam unset) writes it via ResponseEmitter and
+     * exits, preempting WordPress's login re-render; tests override the seam to capture the response
+     * WITHOUT exiting, so the serve is unit-testable. The seam default cannot be a static-property
+     * initializer (PHP forbids a closure there), so it is resolved here (mirrors settings()/post()).
+     *
+     * The headers-already-sent guard lives on the production emit path only: if output has begun we must
+     * not emit a broken page, so we return without exit and WordPress renders normally (degrade-safe). A
+     * capturing test responder bypasses emit entirely, so the guard never blocks unit testing.
+     */
+    private static function respond(FakeResponse $fake): void
+    {
+        if (is_callable(self::$responder)) {
+            call_user_func(self::$responder, $fake);
+
+            return;
+        }
+        if (function_exists('headers_sent') && headers_sent()) {
+            return; // output already started -> never emit a broken page; fall through to WP
+        }
+        ResponseEmitter::emit($fake, 200);
+        exit;
+    }
+
+    /** The public site title for the fake lockout page (persona fills in when empty); never PII. */
+    private static function siteName(): string
+    {
+        if (is_callable(self::$siteNameProvider)) {
+            return (string) call_user_func(self::$siteNameProvider);
+        }
+        if (function_exists('get_bloginfo')) {
+            return (string) get_bloginfo('name');
+        }
+
+        return '';
     }
 
     /**
@@ -179,17 +295,35 @@ final class WpNativeCapture
      */
     private static function decoyFieldName(Settings $s)
     {
+        list($r, $c) = self::loginRequestAndConfig($s);
+        if ($r === null) {
+            return '';
+        }
+
+        return LoginDecoyField::expectedName($r, $c);
+    }
+
+    /**
+     * The login-page RequestContext + core Config, built ONCE from the canonical server-side host
+     * (home_url via hostProvider — request-invariant and un-spoofable, NOT the client Host header), so the
+     * decoy field name (FP-0505) and the fake-lockout seed (FP-0506) both derive from a single source of
+     * truth and agree by construction. Returns [null, null] when the host is unavailable (callers no-op).
+     *
+     * @return array{0:?RequestContext,1:?\Funnypot\Core\Config}
+     */
+    private static function loginRequestAndConfig(Settings $s): array
+    {
         $host = '';
         if (is_callable(self::$hostProvider)) {
             $host = (string) call_user_func(self::$hostProvider);
         }
         if ($host === '') {
-            return '';
+            return array(null, null);
         }
         $r = new RequestContext('GET', '/wp-login.php', '', array(), null, $host);
         $c = EvaluatorConfig::fromSettings($s);
 
-        return LoginDecoyField::expectedName($r, $c);
+        return array($r, $c);
     }
 
     /** Escape a value for an HTML attribute (WP esc_attr, with the ENT_QUOTES fallback when WP is absent). */
