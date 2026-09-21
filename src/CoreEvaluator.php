@@ -90,8 +90,20 @@ final class CoreEvaluator implements EvaluatorInterface
 
     // --- policy -> core --------------------------------------------------------------------------
 
-    /** Build a core RequestContext from the neutral evidence (public so the adapter can pre-build it). */
-    public static function contextFromEvidence(RequestEvidence $e)
+    /**
+     * Build a core RequestContext from the neutral evidence (public so the adapter can pre-build it).
+     *
+     * FP-0513: the raw body is threaded in when the caller has it, so core can MATCH body-borne rules
+     * — the decoy-session login mint (pma_username/log/pwd in the POST body → the seeded breach panel),
+     * FP-0086 payloadInspection, and FP-0369 per-field body inspection. Core clips it to its own
+     * BODY_BYTES and NEVER reflects raw request bytes into a served decoy (for an embedded host
+     * isolatedOrigin=false ⇒ reflectors are off), so the no-reflection / OAST-signal-only invariants
+     * hold. It defaults to null (unchanged) for callers that only need the path/header surface (the
+     * ownership counterfactual + the bot-signal-only fallback).
+     *
+     * @param string|null $rawBody the raw request body, or null to omit it
+     */
+    public static function contextFromEvidence(RequestEvidence $e, $rawBody = null)
     {
         $query = $e->query() !== array() ? http_build_query($e->query()) : '';
         $host = $e->header('host');
@@ -101,7 +113,7 @@ final class CoreEvaluator implements EvaluatorInterface
             $e->path(),
             $query,
             $e->headers(),
-            null,               // raw body is never carried (OAST hygiene); bot-signals need only headers
+            $rawBody === null ? null : (string) $rawBody,
             $host !== null ? (string) $host : '',
             'https',
             ''
