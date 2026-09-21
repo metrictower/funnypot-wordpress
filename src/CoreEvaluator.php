@@ -75,7 +75,11 @@ final class CoreEvaluator implements EvaluatorInterface
         $rendered = null;
         if ($handle !== null) {
             try {
-                $rendered = $this->core->synthesizeFromHandle($handle, $coreProfile, $seed);
+                // FP-0516: pass the request so a render that depends on it — the decoy-session gate
+                // reading the auth cookie (the mock-auth authed panel) — can see it. Without it the
+                // two-phase synthesize drops the request and the gate fail-closes to the login page.
+                // Older core ignores the extra arg (defaulted), so this is safe across core versions.
+                $rendered = $this->core->synthesizeFromHandle($handle, $coreProfile, $seed, $this->ctx);
             } catch (\Throwable $e) {
                 $rendered = null;
             }

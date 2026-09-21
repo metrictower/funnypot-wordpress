@@ -54,8 +54,13 @@ fi
 # the RICH per-deploy decoy panels (attack_emulation), and arm the decoy session so a mock-login reveals
 # the seeded breach panel. LOCAL demo box ONLY — the shipped plugin stays inert-by-default (this just
 # flips the box's own settings so a human can browse the panels).
-echo "[wp-init] enabling fake-panel demo settings (attack_emulation + decoy session)..."
-wp option update honeypot_wp_settings '{"enabled":true,"posture":"honeypot","response_mode":"realistic","attack_emulation":true,"decoy_wp_login":true,"decoy_session_key":"funnypot-demo-decoy-session-key-0123456789abcdef"}' --format=json >/dev/null 2>&1 \
+#
+# actions.attack_class MUST be "deceive" (the shipped default is "block"): phpMyAdmin/pgAdmin panels
+# classify as attack-class, and the plugin only runs the decoy-session gate on a DECEIVE decision — a
+# block emits the 403 page and the gate never renders. scanner_probe already defaults to deceive (that
+# is why /grafana works out of the box). This is a demo posture; a real deployment chooses its own bands.
+echo "[wp-init] enabling fake-panel demo settings (attack_emulation + decoy session + attack_class=deceive)..."
+wp option update honeypot_wp_settings '{"enabled":true,"posture":"honeypot","response_mode":"realistic","attack_emulation":true,"decoy_wp_login":true,"decoy_session_key":"funnypot-demo-decoy-session-key-0123456789abcdef","actions":{"clean":"allow","suspicious":"log","attack_class":"deceive","scanner_probe":"deceive"}}' --format=json >/dev/null 2>&1 \
   && echo "[wp-init] fake-panel demo settings applied." \
   || echo "[wp-init] WARN: could not apply demo settings." >&2
 

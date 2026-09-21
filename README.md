@@ -81,8 +81,12 @@ that directory is not writable it falls back to `plugins_loaded` and raises an a
   `minimal` tokens — intentional, since core `minimal` still emits a matcher-satisfying fake and is not
   the capture-only stealth mode.
 - **Decoys** — `decoy_xmlrpc` and `decoy_wp_login` (both off by default) toggle the xmlrpc and wp-login
-  decoys; `decoy_session_key` (a per-deploy secret) arms the wp-login mock-auth authed dashboard. All
-  are forced off in the non-luring modes (stealth and blocked).
+  decoys; `decoy_session_key` (a per-deploy secret) arms the mock-auth authed dashboard. All
+  are forced off in the non-luring modes (stealth and blocked). Note: the wp-login dashboard works
+  under the shipped defaults (wp-login is scanner-class → `deceive`), but the panel dashboards that
+  classify as **attack-class** — phpMyAdmin, pgAdmin — only render their mock-auth panel when the
+  `attack_class` band is set to `deceive` (the shipped default is `block`, which emits the 403 page and
+  never runs the decoy-session gate). Set the band under Advanced → real-route actions.
 - **Login relocation (`login_relocation_enabled` + `login_slug`, off by default):** moves the real
   WordPress login to a secret slug (`/your-slug`) and inverts the vacated default — every hit on
   `/wp-login.php` (and the anon `/wp-admin` bounce that lands there) is now an attacker, so it serves
