@@ -216,7 +216,9 @@ final class Interceptor
             $wpProfile = new WpSiteProfile($realRoute, self::$decoys['xmlrpc'], self::$decoys['wp_login'], $installedSet);
             $profile = $wpProfile->toPolicyProfile($evidence->path());
 
-            $ctx = CoreEvaluator::contextFromEvidence($evidence);
+            // FP-0513: carry the raw body into the core context so body-borne rules match — the
+            // decoy-session login mint (breach panel), FP-0086 payloadInspection, FP-0369 body fields.
+            $ctx = CoreEvaluator::contextFromEvidence($evidence, $rawBody);
             $engine = self::engine($s, $position, array('ctx' => $ctx, 'store' => $store, 'clock' => $clock) + self::coreDep($s));
 
             $decision = $engine->evaluate($evidence, $profile);
