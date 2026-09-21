@@ -50,6 +50,15 @@ else
   echo "[wp-init] WARN: plugin activation failed (is vendor/ present in the mounted tree? run 'composer install' in the repo, then 'docker compose restart wpcli')." >&2
 fi
 
+# FP-0125 demo: arm the fake-panel tier so GET /phpmyadmin, /grafana, /kibana, /wp-login.php etc. render
+# the RICH per-deploy decoy panels (attack_emulation), and arm the decoy session so a mock-login reveals
+# the seeded breach panel. LOCAL demo box ONLY — the shipped plugin stays inert-by-default (this just
+# flips the box's own settings so a human can browse the panels).
+echo "[wp-init] enabling fake-panel demo settings (attack_emulation + decoy session)..."
+wp option update honeypot_wp_settings '{"enabled":true,"posture":"honeypot","response_mode":"realistic","attack_emulation":true,"decoy_wp_login":true,"decoy_session_key":"funnypot-demo-decoy-session-key-0123456789abcdef"}' --format=json >/dev/null 2>&1 \
+  && echo "[wp-init] fake-panel demo settings applied." \
+  || echo "[wp-init] WARN: could not apply demo settings." >&2
+
 # The plugin's hit-store table is created on activation. A first-run activation can land before the DB
 # is fully ready and skip the table create; capture then has no table to write to. Verify it exists and
 # re-activate once if not. Idempotent and non-fatal — a persistent miss just logs a warning.
