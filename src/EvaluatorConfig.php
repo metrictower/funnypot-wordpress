@@ -39,7 +39,7 @@ final class EvaluatorConfig
         }
 
         // Positional recipe (core Config constructor order). Each line pins its position + source.
-        return new CoreConfig(
+        $config = new CoreConfig(
             'detect',                 //  1 mode          — classify()/synthesize() ignore it; core default
             null,                     //  2 gate          — the policy's concern; core default (closed)
             'matched-only',           //  3 pathScope     — NOT in D's map; core default (must be passed)
@@ -63,6 +63,12 @@ final class EvaluatorConfig
             null,                     // 21 deploySeed    — the policy's concern; core default
             $decoySessionKey          // 22 decoySessionKey — arms the wp-login authed skin
         );
+
+        // Later core flags are set by name rather than extending the positional recipe.
+        $config->decoyArchives = $s->decoyArchives();
+        $config->decoyArchiveAnyName = $s->decoyArchivesAnyName();
+
+        return $config;
     }
 
     private static function resolveAuthSalt($resolver)

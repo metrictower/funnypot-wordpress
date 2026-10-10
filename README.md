@@ -87,6 +87,14 @@ that directory is not writable it falls back to `plugins_loaded` and raises an a
   classify as **attack-class** — phpMyAdmin, pgAdmin — only render their mock-auth panel when the
   `attack_class` band is set to `deceive` (the shipped default is `block`, which emits the 403 page and
   never runs the decoy-session gate). Set the band under Advanced → real-route actions.
+- **Backup-archive decoys (`decoy_archives`, off by default; needs funnypot-core with FP-0713):** a
+  missing `/backup.zip`, `/www.tar.gz`, `/site_old.7z`, `/<your-domain>.zip` (backup-style names) is
+  answered with a ~1 MB valid archive of that type wrapping funnypot-core's deep nested decoy chain —
+  ~1,200 layers of mixed formats that end in dead ends, to waste a scanner's time. It classifies as a
+  scanner probe, so it follows the `scanner_probe` band (default `deceive`) and is logged/reported like
+  any other probe. `decoy_archives_any_name` widens it to every archive basename. `.gz`/`.tar.gz` need
+  ext-zlib and `.bz2` needs ext-bz2; otherwise that extension keeps WordPress's own 404. Forced off in
+  stealth and blocked modes. Real pages and uploads are never shadowed.
 - **Login relocation (`login_relocation_enabled` + `login_slug`, off by default):** moves the real
   WordPress login to a secret slug (`/your-slug`) and inverts the vacated default — every hit on
   `/wp-login.php` (and the anon `/wp-admin` bounce that lands there) is now an attacker, so it serves

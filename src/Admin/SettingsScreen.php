@@ -72,6 +72,8 @@ final class SettingsScreen
         self::checkbox($opt, 'decoy_xmlrpc', 'xmlrpc.php decoy', $d['decoy_xmlrpc']);
         self::checkbox($opt, 'decoy_wp_login', 'wp-login mock-auth authed dashboard decoy', $d['decoy_wp_login']);
         self::password($opt, 'decoy_session_key', 'Decoy session key (per-deploy secret; arms the authed skin)', $d['decoy_session_key']);
+        self::checkbox($opt, 'decoy_archives', 'Backup-archive decoys (/backup.zip, /www.tar.gz …)', $d['decoy_archives']);
+        self::checkbox($opt, 'decoy_archives_any_name', 'Backup-archive decoys for any archive name (not just backup-style names)', $d['decoy_archives_any_name']);
         self::help('Decoys are forced off in stealth mode. The authed skin arms only when wp-login decoy is on and a session key is set.');
 
         echo '<tr><th colspan="2"><h2>Login relocation</h2></th></tr>';

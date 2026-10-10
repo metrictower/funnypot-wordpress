@@ -176,6 +176,10 @@ final class Settings
         $d['decoy_xmlrpc'] = isset($r['decoy_xmlrpc']) ? (bool) $r['decoy_xmlrpc'] : false;
         $d['decoy_wp_login'] = isset($r['decoy_wp_login']) ? (bool) $r['decoy_wp_login'] : false;
         $d['decoy_session_key'] = isset($r['decoy_session_key']) ? (string) $r['decoy_session_key'] : '';
+        // FP-0713 decoy backup archives (/backup.zip, /www.tar.gz …). Off by default; any_name widens
+        // matching from backup-style basenames to every servable archive basename.
+        $d['decoy_archives'] = isset($r['decoy_archives']) ? (bool) $r['decoy_archives'] : false;
+        $d['decoy_archives_any_name'] = isset($r['decoy_archives_any_name']) ? (bool) $r['decoy_archives_any_name'] : false;
 
         // Login relocation (FP-0490). Inert by default. The slug is sanitized to a single lower-case
         // dashed segment; an empty-or-invalid slug is stored as '' so relocation stays OFF (fail-open
@@ -431,6 +435,17 @@ final class Settings
     public function decoyXmlrpc()
     {
         return $this->data['decoy_xmlrpc'];
+    }
+
+    /** Decoy backup archives, forced off when the response mode serves no decoys (stealth/blocked). */
+    public function decoyArchives()
+    {
+        return $this->data['decoy_archives'] && $this->responseModeServesDecoys();
+    }
+
+    public function decoyArchivesAnyName()
+    {
+        return $this->data['decoy_archives_any_name'];
     }
 
     public function decoyWpLogin()

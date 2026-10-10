@@ -40,12 +40,12 @@ final class FakeCoreEvaluator implements Evaluator
         return new Verdict($this->classification, $detection, 'high', 0, BotSignalSet::empty(), $handle);
     }
 
-    public function synthesize(Verdict $verdict, SiteProfile $profile, string $seed): ?SynthesizedResponse
+    public function synthesize(Verdict $verdict, SiteProfile $profile, string $seed, ?RequestContext $r = null): ?SynthesizedResponse
     {
         return $verdict->fakeHandle === null ? null : $this->synthResponse;
     }
 
-    public function synthesizeFromHandle(?FakeHandle $handle, SiteProfile $profile, string $seed): ?SynthesizedResponse
+    public function synthesizeFromHandle(?FakeHandle $handle, SiteProfile $profile, string $seed, ?RequestContext $r = null): ?SynthesizedResponse
     {
         // Mirrors the real engine: the handle alone decides whether there is anything to build, so a
         // test that loses the handle across the boundary fails here rather than silently passing.

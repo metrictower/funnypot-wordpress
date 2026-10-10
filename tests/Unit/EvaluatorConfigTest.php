@@ -48,6 +48,27 @@ final class EvaluatorConfigTest extends TestCase
         $this->assertSame(15, $cfg->latencyJitterMs);
     }
 
+    public function testDecoyArchivesMapToCoreAndAreOffByDefault(): void
+    {
+        $off = EvaluatorConfig::fromSettings($this->settings(array()));
+        $this->assertFalse($off->decoyArchives);
+        $this->assertFalse($off->decoyArchiveAnyName);
+
+        $on = EvaluatorConfig::fromSettings($this->settings(array(
+            'response_style' => 'realistic',
+            'decoy_archives' => true,
+            'decoy_archives_any_name' => true,
+        )));
+        $this->assertTrue($on->decoyArchives);
+        $this->assertTrue($on->decoyArchiveAnyName);
+
+        $stealth = EvaluatorConfig::fromSettings($this->settings(array(
+            'response_mode' => 'stealth',
+            'decoy_archives' => true,
+        )));
+        $this->assertFalse($stealth->decoyArchives, 'stealth serves no decoys');
+    }
+
     public function testPositionalGuardMiddleParamsAreCoreDefaults(): void
     {
         // If a middle positional arg had been skipped, these would carry a shifted value.
