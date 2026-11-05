@@ -96,11 +96,12 @@ that directory is not writable it falls back to `plugins_loaded` and raises an a
   ext-zlib and `.bz2` needs ext-bz2; otherwise that extension keeps WordPress's own 404. Forced off in
   stealth and blocked modes, and `decoy_archives_any_name` does nothing unless `decoy_archives` is on. Archive
   decoys are served only at the fallback position, after WordPress has routed, so a file the web server finds
-  on disk or an archive a plugin serves from its own route always answers first — under every posture.
+  on disk or an archive a plugin serves from its own route always answers first. Under the `waf` posture,
+  which has no fallback position, archive decoys are never served.
   Each hit builds the archive afresh: about 5 MB of extra memory, 20–140 ms of CPU (bz2 is slowest) and
   ~1 MB of egress, and there is no per-path rate limit, so weigh it on small hosts. A decoy hit pins the
   visitor as deceived for `pin_ttl_seconds` (default 3600) like any other decoy, so test from an address listed in
-  `self_ips` or you will be served decoys/404s until the pin expires.
+  `self_ips` (exact IP) or the allowlist ips/CIDRs, or you will be served decoys/404s until the pin expires.
 - **Login relocation (`login_relocation_enabled` + `login_slug`, off by default):** moves the real
   WordPress login to a secret slug (`/your-slug`) and inverts the vacated default — every hit on
   `/wp-login.php` (and the anon `/wp-admin` bounce that lands there) is now an attacker, so it serves
