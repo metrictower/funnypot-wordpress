@@ -33,11 +33,19 @@ final class CoreEvaluator implements EvaluatorInterface
     private $core;
     /** @var CoreRequestContext|null the current request, for synthesize() re-classification */
     private $ctx;
+    /** @var string|null 'before' | 'fallback' | null (position-free callers) */
+    private $position;
 
-    public function __construct(CoreEvaluatorContract $core, $ctx = null)
+    /**
+     * @param string|null $position the interception position this bridge serves. At 'before' WordPress
+     *                              has not routed yet, so a plugin route serving a real archive is still
+     *                              invisible; decoy archives are left to the fallback position.
+     */
+    public function __construct(CoreEvaluatorContract $core, $ctx = null, $position = null)
     {
         $this->core = $core;
         $this->ctx = $ctx instanceof CoreRequestContext ? $ctx : null;
+        $this->position = is_string($position) ? $position : null;
     }
 
     public function classify(RequestEvidence $request, PolicySiteProfile $profile)
@@ -45,6 +53,9 @@ final class CoreEvaluator implements EvaluatorInterface
         $ctx = $this->ctx !== null ? $this->ctx : self::contextFromEvidence($request);
         $coreProfile = self::toCoreProfile($profile);
         $coreVerdict = $this->core->classify($ctx, $coreProfile);
+        if ($this->position === 'before' && self::isDecoyArchive($coreVerdict->fakeHandle)) {
+            $coreVerdict = CoreVerdict::clean($coreVerdict->signals);
+        }
 
         return self::toPolicyVerdict($coreVerdict, $profile, $request->path());
     }
@@ -72,6 +83,10 @@ final class CoreEvaluator implements EvaluatorInterface
             }
         }
 
+        if ($this->position === 'before' && self::isDecoyArchive($handle)) {
+            $handle = null;
+        }
+
         $rendered = null;
         if ($handle !== null) {
             try {
@@ -90,6 +105,12 @@ final class CoreEvaluator implements EvaluatorInterface
         }
 
         return self::toPolicyFake($rendered);
+    }
+
+    /** @param CoreFakeHandle|null $handle */
+    private static function isDecoyArchive($handle)
+    {
+        return $handle instanceof CoreFakeHandle && $handle->kind === CoreFakeHandle::KIND_DECOY_ARCHIVE;
     }
 
     // --- policy -> core --------------------------------------------------------------------------

@@ -52,7 +52,7 @@ final class PolicyFactory
             ? $deps['evaluator']
             : Honeypot::default(EvaluatorConfig::fromSettings($s));
         $ctx = isset($deps['ctx']) ? $deps['ctx'] : null;
-        $evaluator = new CoreEvaluator($coreEval, $ctx);
+        $evaluator = new CoreEvaluator($coreEval, $ctx, $position);
 
         $geo = ($s->countryPosture() !== Settings::COUNTRY_OFF)
             ? new WpGeoIp(isset($deps['geo_reader']) ? $deps['geo_reader'] : null)
