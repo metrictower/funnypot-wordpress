@@ -176,7 +176,7 @@ final class Settings
         $d['decoy_xmlrpc'] = isset($r['decoy_xmlrpc']) ? (bool) $r['decoy_xmlrpc'] : false;
         $d['decoy_wp_login'] = isset($r['decoy_wp_login']) ? (bool) $r['decoy_wp_login'] : false;
         $d['decoy_session_key'] = isset($r['decoy_session_key']) ? (string) $r['decoy_session_key'] : '';
-        // FP-0713 decoy backup archives (/backup.zip, /www.tar.gz …). Off by default; any_name widens
+        // Decoy backup archives (/backup.zip, /www.tar.gz …). Off by default; any_name widens
         // matching from backup-style basenames to every servable archive basename.
         $d['decoy_archives'] = isset($r['decoy_archives']) ? (bool) $r['decoy_archives'] : false;
         $d['decoy_archives_any_name'] = isset($r['decoy_archives_any_name']) ? (bool) $r['decoy_archives_any_name'] : false;
@@ -443,9 +443,10 @@ final class Settings
         return $this->data['decoy_archives'] && $this->responseModeServesDecoys();
     }
 
+    /** Widens decoyArchives() to any archive basename; off whenever decoyArchives() is off. */
     public function decoyArchivesAnyName()
     {
-        return $this->data['decoy_archives_any_name'];
+        return $this->data['decoy_archives_any_name'] && $this->decoyArchives();
     }
 
     public function decoyWpLogin()

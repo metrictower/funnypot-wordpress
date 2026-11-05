@@ -67,6 +67,19 @@ final class EvaluatorConfigTest extends TestCase
             'decoy_archives' => true,
         )));
         $this->assertFalse($stealth->decoyArchives, 'stealth serves no decoys');
+
+        $blocked = EvaluatorConfig::fromSettings($this->settings(array(
+            'response_mode' => 'blocked',
+            'decoy_archives' => true,
+            'decoy_archives_any_name' => true,
+        )));
+        $this->assertFalse($blocked->decoyArchives, 'blocked serves no decoys');
+        $this->assertFalse($blocked->decoyArchiveAnyName, 'any-name follows decoyArchives');
+
+        $anyNameOnly = EvaluatorConfig::fromSettings($this->settings(array(
+            'decoy_archives_any_name' => true,
+        )));
+        $this->assertFalse($anyNameOnly->decoyArchiveAnyName, 'any-name needs decoy_archives on');
     }
 
     public function testPositionalGuardMiddleParamsAreCoreDefaults(): void
